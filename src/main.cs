@@ -101,7 +101,7 @@ using System.Diagnostics;
                 if (isFound)
                 {
                     Process process = new Process();
-                    process.StartInfo.FileName = executablePath; // The full path to custom_exe
+                    process.StartInfo.FileName = programName; // The full path to custom_exe
                     process.StartInfo.Arguments = arguments;     // The arguments (e.g., "alice")
                         
                     // This is required so it runs inside your shell's output window
