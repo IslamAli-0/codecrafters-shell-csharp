@@ -1,65 +1,50 @@
-using System.Diagnostics;    
-    
-    class Program
+using System.Diagnostics;
+
+class Program
+{
+    static void Main()
     {
-        static void Main()
+        // TODO: Uncomment the code below to pass the first stage
+        while (true)
         {
-            // TODO: Uncomment the code below to pass the first stage
-            while(true){
-                Console.Write("$ ");
-                string? command = String.Empty;
-                command = Console.ReadLine();
-                if (command.Equals("exit"))
+            Console.Write("$ ");
+            string? command = String.Empty;
+            command = Console.ReadLine();
+            if (command.Equals("exit"))
+            {
+                break;
+            }
+            else if (command.StartsWith("echo"))
+            {
+                command = command.Substring(5);
+                Console.WriteLine(command);
+                continue;
+            }
+            else if (command.StartsWith("type "))
+            {
+                // 1. Extract the target and clean up any stray whitespace
+                string target = command.Substring(5).Trim();
+
+                if (target == "type" || target == "exit" || target == "echo")
                 {
-                    break;
-                }else if (command.StartsWith("echo"))
+                    Console.WriteLine($"{target} is a shell builtin");
+                }
+                else
                 {
-                    command = command.Substring(5);
-                    Console.WriteLine(command);
-                    continue;
-                }else if (command.StartsWith("type "))
-                {
-                    // 1. Extract the target and clean up any stray whitespace
-                    string target = command.Substring(5).Trim(); 
-                    
-                    if (target == "type" || target == "exit" || target == "echo")
+                    string PathofFile;
+
+                    bool ExistsAndExecutable = FileExistsAndExecutable(target, out PathofFile);
+
+                    if (ExistsAndExecutable)
                     {
-                        Console.WriteLine($"{target} is a shell builtin");
+                        Console.WriteLine($"{target} is {PathofFile}");
                     }
                     else
                     {
-                        string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                        string[] paths = pathEnv.Split(Path.PathSeparator);
-                        bool isFound = false;
-
-                        foreach (string dir in paths)
-                        {
-                            // Skip empty directory strings just in case
-                            if (string.IsNullOrWhiteSpace(dir)) continue; 
-
-                            string fullPath = Path.Combine(dir, target);
-                            
-                            if (File.Exists(fullPath))
-                            {
-                                // 2. Check if the file is actually an executable
-                                UnixFileMode mode = File.GetUnixFileMode(fullPath);
-                                bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-
-                                if (isExecutable)
-                                {
-                                    Console.WriteLine($"{target} is {fullPath}");
-                                    isFound = true;
-                                    break; 
-                                }
-                            }
-                        }
-
-                        if (!isFound)
-                        {
-                            Console.WriteLine($"{target}: not found");
-                        }
+                        Console.WriteLine($"{target}: not found");
                     }
-                    continue;
+                }
+                continue;
             }
             else
             {
@@ -67,48 +52,23 @@ using System.Diagnostics;
                 if (parts.Length == 0) continue;
 
                 string programName = parts[0]; // e.g., "custom_exe_1234"
-                
+
                 // Grab everything after the program name to pass as arguments
                 string arguments = parts.Length > 1 ? string.Join(" ", parts[1..]) : "";
 
-                string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                string[] paths = pathEnv.Split(Path.PathSeparator);
-                bool isFound = false;
-                string executablePath = string.Empty;
+                bool ExistsAndExecutable = FileExistsAndExecutable(programName);
 
-                    foreach (string dir in paths)
-                    {
-                        // Skip empty directory strings just in case
-                        if (string.IsNullOrWhiteSpace(dir)) continue; 
-
-                        string fullPath = Path.Combine(dir,programName);
-                            
-                        if (File.Exists(fullPath))
-                        {
-                            // 2. Check if the file is actually an executable
-                            UnixFileMode mode = File.GetUnixFileMode(fullPath);
-                            bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-
-                            if (isExecutable)
-                            {
-                                isFound = true;
-                                executablePath = fullPath;
-                                break; // We found it, stop searching!
-                            }
-                        }
-                    }
-
-                if (isFound)
+                if (ExistsAndExecutable)
                 {
                     Process process = new Process();
-                    process.StartInfo.FileName = programName; // The full path to custom_exe
+                    process.StartInfo.FileName = programName; // custom_exe
                     process.StartInfo.Arguments = arguments;     // The arguments (e.g., "alice")
-                        
+
                     // This is required so it runs inside your shell's output window
-                    process.StartInfo.UseShellExecute = false;   
-                        
+                    process.StartInfo.UseShellExecute = false;
+
                     process.Start();       // Run it!
-                    process.WaitForExit(); // Don't print the next "$ " prompt until it finishes
+                    process.WaitForExit(); // Don't print the next "$ " prompt until it [finishes
                 }
                 else
                 {
@@ -119,5 +79,72 @@ using System.Diagnostics;
         }
     }
 
+    public static bool FileExistsAndExecutable(string name)
+    {
+        string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        string[] paths = pathEnv.Split(Path.PathSeparator);
+        bool isFound = false;
+        string executablePath = string.Empty;
+
+        foreach (string dir in paths)
+        {
+            // Skip empty directory strings just in case
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+
+            string fullPath = Path.Combine(dir, name);
+
+            if (File.Exists(fullPath))
+            {
+                // 2. Check if the file is actually an executable
+                UnixFileMode mode = File.GetUnixFileMode(fullPath);
+                bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+
+                if (isExecutable)
+                {
+                    isFound = true;
+                    executablePath = fullPath;
+
+                    return true;
+                    //break; // We found it, stop searching!
+                }
+            }
         }
-    
+
+        return false;
+    }
+    public static bool FileExistsAndExecutable(string name, out string fullpath)
+    {
+        string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        string[] paths = pathEnv.Split(Path.PathSeparator);
+        bool isFound = false;
+        string executablePath = string.Empty;
+
+        foreach (string dir in paths)
+        {
+            // Skip empty directory strings just in case
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+
+            string fullPath = Path.Combine(dir, name);
+
+            if (File.Exists(fullPath))
+            {
+                // 2. Check if the file is actually an executable
+                UnixFileMode mode = File.GetUnixFileMode(fullPath);
+                bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+
+                if (isExecutable)
+                {
+                    isFound = true;
+                    executablePath = fullPath;
+                    fullpath = Path.Combine(dir, name);
+                    return true;
+                    //break; // We found it, stop searching!
+                }
+            }
+        }
+        fullpath = null;
+        return false;
+    }
+
+}
+
