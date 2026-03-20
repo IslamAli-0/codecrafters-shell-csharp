@@ -7,6 +7,10 @@ class Program
             Console.Write("$ ");
             string command = String.Empty;
             command = Console.ReadLine();
+            if (command.Equals("exit"))
+            {
+                break;
+            }
             Console.WriteLine($"{command}: command not found");
         }
 
