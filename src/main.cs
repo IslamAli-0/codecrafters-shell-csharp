@@ -10,6 +10,11 @@ class Program
             if (command.Equals("exit"))
             {
                 break;
+            }else if (command.StartsWith("echo"))
+            {
+                command = command.Substring(4);
+                Console.WriteLine(command);
+                continue;
             }
             Console.WriteLine($"{command}: command not found");
         }
