@@ -12,7 +12,7 @@ class Program
                 break;
             }else if (command.StartsWith("echo"))
             {
-                command = command.Substring(4);
+                command = command.Substring(5);
                 Console.WriteLine(command);
                 continue;
             }
