@@ -33,7 +33,7 @@ class Program
                 // 1. Extract the target and clean up any stray whitespace
                 string target = command.Substring(5).Trim();
 
-                if (target == "type" || target == "exit" || target == "echo")
+                if (target == "type" || target == "exit" || target == "echo" || target == "pwd")
                 {
                     Console.WriteLine($"{target} is a shell builtin");
                 }
