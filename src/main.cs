@@ -22,6 +22,26 @@ class Program
                 Console.WriteLine(Directory.GetCurrentDirectory());
                 continue;
             }
+            else if (command.StartsWith("cd "))
+            {
+                string dir = command.Substring(3).Trim();
+                if (dir == "~")
+                {
+                    dir = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
+                }
+                if (dir.StartsWith("/"))
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        Directory.SetCurrentDirectory(dir);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"cd: {dir}: No such file or directory");
+                    }
+                }
+                continue;
+            }
             else if (command.StartsWith("echo"))
             {
                 command = command.Substring(5);
