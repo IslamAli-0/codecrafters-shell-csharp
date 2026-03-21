@@ -10,9 +10,17 @@ class Program
             Console.Write("$ ");
             string? command = String.Empty;
             command = Console.ReadLine();
-            if (command.Equals("exit"))
+
+            if (command == null) continue;
+
+            if (command == "exit")
             {
                 break;
+            }
+            else if (command == "pwd")
+            {
+                Console.WriteLine(Directory.GetCurrentDirectory());
+                continue;
             }
             else if (command.StartsWith("echo"))
             {
@@ -79,72 +87,52 @@ class Program
         }
     }
 
-    public static bool FileExistsAndExecutable(string name)
-    {
-        string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        string[] paths = pathEnv.Split(Path.PathSeparator);
-        bool isFound = false;
-        string executablePath = string.Empty;
-
-        foreach (string dir in paths)
-        {
-            // Skip empty directory strings just in case
-            if (string.IsNullOrWhiteSpace(dir)) continue;
-
-            string fullPath = Path.Combine(dir, name);
-
-            if (File.Exists(fullPath))
-            {
-                // 2. Check if the file is actually an executable
-                UnixFileMode mode = File.GetUnixFileMode(fullPath);
-                bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-
-                if (isExecutable)
-                {
-                    isFound = true;
-                    executablePath = fullPath;
-
-                    return true;
-                    //break; // We found it, stop searching!
-                }
-            }
-        }
-
-        return false;
-    }
+    // 1. The Main Worker Method
     public static bool FileExistsAndExecutable(string name, out string fullpath)
     {
         string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         string[] paths = pathEnv.Split(Path.PathSeparator);
-        bool isFound = false;
-        string executablePath = string.Empty;
 
         foreach (string dir in paths)
         {
-            // Skip empty directory strings just in case
             if (string.IsNullOrWhiteSpace(dir)) continue;
 
-            string fullPath = Path.Combine(dir, name);
+            string testPath = Path.Combine(dir, name);
 
-            if (File.Exists(fullPath))
+            // On Windows, executables usually end in .exe, .bat, or .cmd. 
+            // For testing your shell locally, we can just check if we are on Windows.
+            if (File.Exists(testPath))
             {
-                // 2. Check if the file is actually an executable
-                UnixFileMode mode = File.GetUnixFileMode(fullPath);
-                bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-
-                if (isExecutable)
+                if (OperatingSystem.IsWindows())
                 {
-                    isFound = true;
-                    executablePath = fullPath;
-                    fullpath = Path.Combine(dir, name);
+                    // If we are on Windows, just knowing the file exists is enough for now
+                    fullpath = testPath;
                     return true;
-                    //break; // We found it, stop searching!
+                }
+                else
+                {
+                    // If we are on Linux (CodeCrafters), do the strict permission check
+                    UnixFileMode mode = File.GetUnixFileMode(testPath);
+                    bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+
+                    if (isExecutable)
+                    {
+                        fullpath = testPath;
+                        return true;
+                    }
                 }
             }
         }
-        fullpath = null;
+
+        fullpath = string.Empty;
         return false;
     }
 
+    // 2. The Shortcut Method
+    public static bool FileExistsAndExecutable(string name)
+    {
+        // The underscore '_' tells C#: "I know this method outputs a string, but I don't need it right now. Throw it away."
+        return FileExistsAndExecutable(name, out _);
+    }
 }
 
