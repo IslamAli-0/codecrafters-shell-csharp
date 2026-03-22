@@ -12,25 +12,40 @@ class Program
             command = Console.ReadLine();
 
             if (command == null) continue;
+            // --- UPGRADED REDIRECTION INTERCEPTOR ---
             string redirectPath = string.Empty;
+            int redirectType = 0; // 0 = none, 1 = stdout, 2 = stderr
 
-            // Check for both > and 1>
-            int redirectIndex = command.IndexOf(" 1> ");
-            string operatorStr = " 1> ";
+            // 1. First, check for the new 2> operator
+            int redirectIndex = command.IndexOf(" 2> ");
+            string operatorStr = " 2> ";
 
-            if (redirectIndex == -1)
-            {
-                redirectIndex = command.IndexOf(" > ");
-                operatorStr = " > ";
-            }
-
-            // If we found a redirection operator
             if (redirectIndex != -1)
             {
-                // Grab the file path (everything after the operator)
-                redirectPath = command.Substring(redirectIndex + operatorStr.Length).Trim();
+                redirectType = 2; // We are redirecting errors!
+            }
+            else
+            {
+                // 2. If it's not 2>, check for our old 1> and > operators
+                redirectIndex = command.IndexOf(" 1> ");
+                operatorStr = " 1> ";
 
-                // Chop off the redirection part so the rest of your shell just sees the normal command
+                if (redirectIndex == -1)
+                {
+                    redirectIndex = command.IndexOf(" > ");
+                    operatorStr = " > ";
+                }
+
+                if (redirectIndex != -1)
+                {
+                    redirectType = 1; // We are redirecting normal output!
+                }
+            }
+
+            // If we found ANY redirection operator, slice the string
+            if (redirectIndex != -1)
+            {
+                redirectPath = command.Substring(redirectIndex + operatorStr.Length).Trim();
                 command = command.Substring(0, redirectIndex).Trim();
             }
             // -------------------------------------
@@ -81,14 +96,21 @@ class Program
             {
                 string outputText = command.Substring(5).Trim().Trim('\'', '"');
 
-                if (redirectPath != string.Empty)
+                if (redirectType == 1)
                 {
-                    // \n adds the required line break at the end of the file
+                    // Redirecting stdout: write to file instead of screen
                     File.WriteAllText(redirectPath, outputText + "\n");
                 }
                 else
                 {
+                    // If no redirection OR if redirecting stderr (2>), stdout still prints to screen!
                     Console.WriteLine(outputText);
+
+                    // If they redirected stderr, create the blank file since echo has no errors
+                    if (redirectType == 2)
+                    {
+                        File.WriteAllText(redirectPath, "");
+                    }
                 }
                 continue;
             }
@@ -135,23 +157,30 @@ class Program
                     Process process = new Process();
                     process.StartInfo.FileName = programName;
                     process.StartInfo.Arguments = arguments;
-
-                    // This is required so it runs inside your shell's output window
                     process.StartInfo.UseShellExecute = false;
 
-                    // NEW: If the user wants to redirect, trap the standard output inside C#
-                    if (redirectPath != string.Empty)
+                    // NEW: Check which pipe to trap based on what the user typed
+                    if (redirectType == 1)
                     {
                         process.StartInfo.RedirectStandardOutput = true;
+                    }
+                    else if (redirectType == 2)
+                    {
+                        process.StartInfo.RedirectStandardError = true;
                     }
 
                     process.Start();
 
-                    // NEW: Grab that trapped output and save it to the file
-                    if (redirectPath != string.Empty)
+                    // NEW: Grab the correct trapped output and save it
+                    if (redirectType == 1)
                     {
                         string trappedOutput = process.StandardOutput.ReadToEnd();
                         File.WriteAllText(redirectPath, trappedOutput);
+                    }
+                    else if (redirectType == 2)
+                    {
+                        string trappedError = process.StandardError.ReadToEnd();
+                        File.WriteAllText(redirectPath, trappedError);
                     }
 
                     process.WaitForExit();
