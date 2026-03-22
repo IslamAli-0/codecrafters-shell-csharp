@@ -1,18 +1,19 @@
 using System.Diagnostics;
+using System.IO;
+using System;
 
 class Program
 {
     static void Main()
     {
-        // TODO: Uncomment the code below to pass the first stage
         while (true)
         {
             Console.Write("$ ");
-            string? command = String.Empty;
-            command = Console.ReadLine();
+            string? command = Console.ReadLine();
 
-            if (command == null) continue;
-            // --- APPENDING REDIRECTION INTERCEPTOR ---
+            if (string.IsNullOrWhiteSpace(command)) continue;
+
+            // --- REDIRECTION INTERCEPTOR ---
             string redirectPath = string.Empty;
             int redirectType = 0; // 0 = none, 1 = stdout, 2 = stderr
             bool appendMode = false;
@@ -20,8 +21,9 @@ class Program
             int redirectIndex = -1;
             string operatorStr = "";
 
-            // CRITICAL: We must check for the longest operators (>>) before the shorter ones (>)
-            if (command.Contains(" 1>> ")) { redirectIndex = command.IndexOf(" 1>> "); operatorStr = " 1>> "; redirectType = 1; appendMode = true; }
+            // CRITICAL: Check for longest operators first!
+            if (command.Contains(" 2>> ")) { redirectIndex = command.IndexOf(" 2>> "); operatorStr = " 2>> "; redirectType = 2; appendMode = true; }
+            else if (command.Contains(" 1>> ")) { redirectIndex = command.IndexOf(" 1>> "); operatorStr = " 1>> "; redirectType = 1; appendMode = true; }
             else if (command.Contains(" >> ")) { redirectIndex = command.IndexOf(" >> "); operatorStr = " >> "; redirectType = 1; appendMode = true; }
             else if (command.Contains(" 1> ")) { redirectIndex = command.IndexOf(" 1> "); operatorStr = " 1> "; redirectType = 1; }
             else if (command.Contains(" 2> ")) { redirectIndex = command.IndexOf(" 2> "); operatorStr = " 2> "; redirectType = 2; }
@@ -34,6 +36,7 @@ class Program
                 command = command.Substring(0, redirectIndex).Trim();
             }
             // -------------------------------------
+
             if (command == "exit")
             {
                 break;
@@ -51,7 +54,7 @@ class Program
                     dir = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
                     Directory.SetCurrentDirectory(dir);
                 }
-                if (dir.StartsWith("/"))
+                else if (dir.StartsWith("/"))
                 {
                     if (Directory.Exists(dir))
                     {
@@ -76,21 +79,14 @@ class Program
                 }
                 continue;
             }
-            else if (command.StartsWith("echo"))
+            else if (command.StartsWith("echo ")) // Added space here to ensure it only catches "echo "
             {
                 string outputText = command.Substring(5).Trim().Trim('\'', '"');
 
                 if (redirectType == 1)
                 {
-                    // NEW: Check if we are appending or overwriting
-                    if (appendMode)
-                    {
-                        File.AppendAllText(redirectPath, outputText + "\n");
-                    }
-                    else
-                    {
-                        File.WriteAllText(redirectPath, outputText + "\n");
-                    }
+                    if (appendMode) File.AppendAllText(redirectPath, outputText + "\n");
+                    else File.WriteAllText(redirectPath, outputText + "\n");
                 }
                 else
                 {
@@ -98,25 +94,23 @@ class Program
 
                     if (redirectType == 2)
                     {
-                        // Overwrite for 2> since 2>> isn't part of this stage
-                        File.WriteAllText(redirectPath, "");
+                        if (appendMode) File.AppendAllText(redirectPath, "");
+                        else File.WriteAllText(redirectPath, "");
                     }
                 }
                 continue;
             }
             else if (command.StartsWith("type "))
             {
-                // 1. Extract the target and clean up any stray whitespace
                 string target = command.Substring(5).Trim();
 
-                if (target == "type" || target == "exit" || target == "echo" || target == "pwd")
+                if (target == "type" || target == "exit" || target == "echo" || target == "pwd" || target == "cd")
                 {
                     Console.WriteLine($"{target} is a shell builtin");
                 }
                 else
                 {
                     string PathofFile;
-
                     bool ExistsAndExecutable = FileExistsAndExecutable(target, out PathofFile);
 
                     if (ExistsAndExecutable)
@@ -132,7 +126,6 @@ class Program
             }
             else
             {
-                // 1. Parse the command
                 string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
 
@@ -141,7 +134,6 @@ class Program
 
                 bool ExistsAndExecutable = FileExistsAndExecutable(programName);
 
-                // --- THIS IS THE STEP 3 CODE ---
                 if (ExistsAndExecutable)
                 {
                     Process process = new Process();
@@ -149,51 +141,37 @@ class Program
                     process.StartInfo.Arguments = arguments;
                     process.StartInfo.UseShellExecute = false;
 
-                    // NEW: Check which pipe to trap based on what the user typed
-                    if (redirectType == 1)
-                    {
-                        process.StartInfo.RedirectStandardOutput = true;
-                    }
-                    else if (redirectType == 2)
-                    {
-                        process.StartInfo.RedirectStandardError = true;
-                    }
+                    // Set up the correct pipe trapping
+                    if (redirectType == 1) process.StartInfo.RedirectStandardOutput = true;
+                    else if (redirectType == 2) process.StartInfo.RedirectStandardError = true;
 
                     process.Start();
 
-                    // NEW: Grab the trapped output and save it using the correct method
+                    // Grab and save the trapped output
                     if (redirectType == 1)
                     {
                         string trappedOutput = process.StandardOutput.ReadToEnd();
-
-                        if (appendMode)
-                        {
-                            File.AppendAllText(redirectPath, trappedOutput);
-                        }
-                        else
-                        {
-                            File.WriteAllText(redirectPath, trappedOutput);
-                        }
+                        if (appendMode) File.AppendAllText(redirectPath, trappedOutput);
+                        else File.WriteAllText(redirectPath, trappedOutput);
                     }
                     else if (redirectType == 2)
                     {
                         string trappedError = process.StandardError.ReadToEnd();
-                        File.WriteAllText(redirectPath, trappedError);
+                        if (appendMode) File.AppendAllText(redirectPath, trappedError);
+                        else File.WriteAllText(redirectPath, trappedError);
                     }
 
                     process.WaitForExit();
                 }
-                // --- END OF STEP 3 CODE ---
                 else
                 {
-                    // If we didn't find it in the PATH, print the standard error
                     Console.WriteLine($"{command}: command not found");
                 }
             }
         }
     }
 
-    // 1. The Main Worker Method
+    // --- HELPER METHODS ---
     public static bool FileExistsAndExecutable(string name, out string fullpath)
     {
         string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
@@ -205,19 +183,15 @@ class Program
 
             string testPath = Path.Combine(dir, name);
 
-            // On Windows, executables usually end in .exe, .bat, or .cmd. 
-            // For testing your shell locally, we can just check if we are on Windows.
             if (File.Exists(testPath))
             {
                 if (OperatingSystem.IsWindows())
                 {
-                    // If we are on Windows, just knowing the file exists is enough for now
                     fullpath = testPath;
                     return true;
                 }
                 else
                 {
-                    // If we are on Linux (CodeCrafters), do the strict permission check
                     UnixFileMode mode = File.GetUnixFileMode(testPath);
                     bool isExecutable = (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
 
@@ -234,11 +208,8 @@ class Program
         return false;
     }
 
-    // 2. The Shortcut Method
     public static bool FileExistsAndExecutable(string name)
     {
-        // The underscore '_' tells C#: "I know this method outputs a string, but I don't need it right now. Throw it away."
         return FileExistsAndExecutable(name, out _);
     }
 }
-
