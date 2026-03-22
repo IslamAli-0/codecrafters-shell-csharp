@@ -40,6 +40,18 @@ class Program
                         Console.WriteLine($"cd: {dir}: No such file or directory");
                     }
                 }
+                else
+                {
+                    dir = Path.GetFullPath(dir);
+                    if (Directory.Exists(dir))
+                    {
+                        Directory.SetCurrentDirectory(dir);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"cd: {dir}: No such file or directory");
+                    }
+                }
                 continue;
             }
             else if (command.StartsWith("echo"))
