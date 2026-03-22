@@ -28,6 +28,7 @@ class Program
                 if (dir == "~")
                 {
                     dir = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
+                    Directory.SetCurrentDirectory(dir);
                 }
                 if (dir.StartsWith("/"))
                 {
