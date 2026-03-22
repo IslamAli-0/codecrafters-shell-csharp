@@ -12,35 +12,20 @@ class Program
             command = Console.ReadLine();
 
             if (command == null) continue;
-            // --- UPGRADED REDIRECTION INTERCEPTOR ---
+            // --- APPENDING REDIRECTION INTERCEPTOR ---
             string redirectPath = string.Empty;
             int redirectType = 0; // 0 = none, 1 = stdout, 2 = stderr
+            bool appendMode = false;
 
-            // 1. First, check for the new 2> operator
-            int redirectIndex = command.IndexOf(" 2> ");
-            string operatorStr = " 2> ";
+            int redirectIndex = -1;
+            string operatorStr = "";
 
-            if (redirectIndex != -1)
-            {
-                redirectType = 2; // We are redirecting errors!
-            }
-            else
-            {
-                // 2. If it's not 2>, check for our old 1> and > operators
-                redirectIndex = command.IndexOf(" 1> ");
-                operatorStr = " 1> ";
-
-                if (redirectIndex == -1)
-                {
-                    redirectIndex = command.IndexOf(" > ");
-                    operatorStr = " > ";
-                }
-
-                if (redirectIndex != -1)
-                {
-                    redirectType = 1; // We are redirecting normal output!
-                }
-            }
+            // CRITICAL: We must check for the longest operators (>>) before the shorter ones (>)
+            if (command.Contains(" 1>> ")) { redirectIndex = command.IndexOf(" 1>> "); operatorStr = " 1>> "; redirectType = 1; appendMode = true; }
+            else if (command.Contains(" >> ")) { redirectIndex = command.IndexOf(" >> "); operatorStr = " >> "; redirectType = 1; appendMode = true; }
+            else if (command.Contains(" 1> ")) { redirectIndex = command.IndexOf(" 1> "); operatorStr = " 1> "; redirectType = 1; }
+            else if (command.Contains(" 2> ")) { redirectIndex = command.IndexOf(" 2> "); operatorStr = " 2> "; redirectType = 2; }
+            else if (command.Contains(" > ")) { redirectIndex = command.IndexOf(" > "); operatorStr = " > "; redirectType = 1; }
 
             // If we found ANY redirection operator, slice the string
             if (redirectIndex != -1)
@@ -49,7 +34,6 @@ class Program
                 command = command.Substring(0, redirectIndex).Trim();
             }
             // -------------------------------------
-
             if (command == "exit")
             {
                 break;
@@ -98,17 +82,23 @@ class Program
 
                 if (redirectType == 1)
                 {
-                    // Redirecting stdout: write to file instead of screen
-                    File.WriteAllText(redirectPath, outputText + "\n");
+                    // NEW: Check if we are appending or overwriting
+                    if (appendMode)
+                    {
+                        File.AppendAllText(redirectPath, outputText + "\n");
+                    }
+                    else
+                    {
+                        File.WriteAllText(redirectPath, outputText + "\n");
+                    }
                 }
                 else
                 {
-                    // If no redirection OR if redirecting stderr (2>), stdout still prints to screen!
                     Console.WriteLine(outputText);
 
-                    // If they redirected stderr, create the blank file since echo has no errors
                     if (redirectType == 2)
                     {
+                        // Overwrite for 2> since 2>> isn't part of this stage
                         File.WriteAllText(redirectPath, "");
                     }
                 }
@@ -171,11 +161,19 @@ class Program
 
                     process.Start();
 
-                    // NEW: Grab the correct trapped output and save it
+                    // NEW: Grab the trapped output and save it using the correct method
                     if (redirectType == 1)
                     {
                         string trappedOutput = process.StandardOutput.ReadToEnd();
-                        File.WriteAllText(redirectPath, trappedOutput);
+
+                        if (appendMode)
+                        {
+                            File.AppendAllText(redirectPath, trappedOutput);
+                        }
+                        else
+                        {
+                            File.WriteAllText(redirectPath, trappedOutput);
+                        }
                     }
                     else if (redirectType == 2)
                     {
