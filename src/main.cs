@@ -79,7 +79,7 @@ class Program
             }
             else if (command.StartsWith("echo"))
             {
-                string outputText = command.Substring(5);
+                string outputText = command.Substring(5).Trim().Trim('\'', '"');
 
                 if (redirectPath != string.Empty)
                 {
