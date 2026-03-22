@@ -12,6 +12,28 @@ class Program
             command = Console.ReadLine();
 
             if (command == null) continue;
+            string redirectPath = string.Empty;
+
+            // Check for both > and 1>
+            int redirectIndex = command.IndexOf(" 1> ");
+            string operatorStr = " 1> ";
+
+            if (redirectIndex == -1)
+            {
+                redirectIndex = command.IndexOf(" > ");
+                operatorStr = " > ";
+            }
+
+            // If we found a redirection operator
+            if (redirectIndex != -1)
+            {
+                // Grab the file path (everything after the operator)
+                redirectPath = command.Substring(redirectIndex + operatorStr.Length).Trim();
+
+                // Chop off the redirection part so the rest of your shell just sees the normal command
+                command = command.Substring(0, redirectIndex).Trim();
+            }
+            // -------------------------------------
 
             if (command == "exit")
             {
@@ -57,8 +79,17 @@ class Program
             }
             else if (command.StartsWith("echo"))
             {
-                command = command.Substring(5);
-                Console.WriteLine(command);
+                string outputText = command.Substring(5);
+
+                if (redirectPath != string.Empty)
+                {
+                    // \n adds the required line break at the end of the file
+                    File.WriteAllText(redirectPath, outputText + "\n");
+                }
+                else
+                {
+                    Console.WriteLine(outputText);
+                }
                 continue;
             }
             else if (command.StartsWith("type "))
@@ -89,28 +120,43 @@ class Program
             }
             else
             {
+                // 1. Parse the command
                 string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
 
-                string programName = parts[0]; // e.g., "custom_exe_1234"
-
-                // Grab everything after the program name to pass as arguments
+                string programName = parts[0];
                 string arguments = parts.Length > 1 ? string.Join(" ", parts[1..]) : "";
 
                 bool ExistsAndExecutable = FileExistsAndExecutable(programName);
 
+                // --- THIS IS THE STEP 3 CODE ---
                 if (ExistsAndExecutable)
                 {
                     Process process = new Process();
-                    process.StartInfo.FileName = programName; // custom_exe
-                    process.StartInfo.Arguments = arguments;     // The arguments (e.g., "alice")
+                    process.StartInfo.FileName = programName;
+                    process.StartInfo.Arguments = arguments;
 
                     // This is required so it runs inside your shell's output window
                     process.StartInfo.UseShellExecute = false;
 
-                    process.Start();       // Run it!
-                    process.WaitForExit(); // Don't print the next "$ " prompt until it [finishes
+                    // NEW: If the user wants to redirect, trap the standard output inside C#
+                    if (redirectPath != string.Empty)
+                    {
+                        process.StartInfo.RedirectStandardOutput = true;
+                    }
+
+                    process.Start();
+
+                    // NEW: Grab that trapped output and save it to the file
+                    if (redirectPath != string.Empty)
+                    {
+                        string trappedOutput = process.StandardOutput.ReadToEnd();
+                        File.WriteAllText(redirectPath, trappedOutput);
+                    }
+
+                    process.WaitForExit();
                 }
+                // --- END OF STEP 3 CODE ---
                 else
                 {
                     // If we didn't find it in the PATH, print the standard error
