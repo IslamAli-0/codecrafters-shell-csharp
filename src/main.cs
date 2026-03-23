@@ -8,8 +8,8 @@ class Program
     {
         while (true)
         {
-            Console.Write("$ ");
-            string? command = Console.ReadLine();
+            ReadLine.AutoCompletionHandler = new AutocompleteHandler();
+            string command = ReadLine.Read("$ ");
 
             if (string.IsNullOrWhiteSpace(command)) continue;
 
