@@ -8,8 +8,9 @@ class Program
     {
         while (true)
         {
-            ReadLine.AutoCompletionHandler = new AutocompleteHandler();
-            string command = ReadLine.Read("$ ");
+            Console.Write("$ ");
+            // Use our brand new raw method instead of Console.ReadLine()
+            string command = ReadCommand();
 
             if (string.IsNullOrWhiteSpace(command)) continue;
 
@@ -211,5 +212,61 @@ class Program
     public static bool FileExistsAndExecutable(string name)
     {
         return FileExistsAndExecutable(name, out _);
+    }
+    private static string ReadCommand()
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+
+        // These are the built-ins your shell currently knows
+        string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
+
+        while (true)
+        {
+            // intercept: true means the keystroke doesn't automatically print to the screen
+            var keyInfo = Console.ReadKey(intercept: true);
+
+            if (keyInfo.Key == ConsoleKey.Enter)
+            {
+                Console.WriteLine(); // Move to the next line
+                return sb.ToString();
+            }
+            else if (keyInfo.Key == ConsoleKey.Backspace)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Length--;
+                    // The classic terminal trick to erase a character: step back, overwrite with space, step back again
+                    Console.Write("\b \b");
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.Tab)
+            {
+                string current = sb.ToString();
+
+                // Find all built-ins that start with what the user typed
+                var matches = builtins.Where(b => b.StartsWith(current)).ToList();
+
+                if (matches.Count == 1)
+                {
+                    string match = matches[0];
+                    // Figure out exactly what letters are missing, plus the trailing space
+                    string remainder = match.Substring(current.Length) + " ";
+
+                    sb.Append(remainder);
+                    Console.Write(remainder); // Print only the missing letters!
+                }
+                else
+                {
+                    // Standard terminal behavior: if 0 matches or multiple matches, ring the warning bell
+                    Console.Write("\a");
+                }
+            }
+            else
+            {
+                // Standard typing: save the character and print it
+                sb.Append(keyInfo.KeyChar);
+                Console.Write(keyInfo.KeyChar);
+            }
+        }
     }
 }
