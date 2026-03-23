@@ -216,18 +216,15 @@ class Program
     private static string ReadCommand()
     {
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
-
-        // These are the built-ins your shell currently knows
         string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
 
         while (true)
         {
-            // intercept: true means the keystroke doesn't automatically print to the screen
             var keyInfo = Console.ReadKey(intercept: true);
 
             if (keyInfo.Key == ConsoleKey.Enter)
             {
-                Console.WriteLine(); // Move to the next line
+                Console.WriteLine();
                 return sb.ToString();
             }
             else if (keyInfo.Key == ConsoleKey.Backspace)
@@ -235,7 +232,6 @@ class Program
                 if (sb.Length > 0)
                 {
                     sb.Length--;
-                    // The classic terminal trick to erase a character: step back, overwrite with space, step back again
                     Console.Write("\b \b");
                 }
             }
@@ -243,27 +239,60 @@ class Program
             {
                 string current = sb.ToString();
 
-                // Find all built-ins that start with what the user typed
+                // 1. Get built-in matches
                 var matches = builtins.Where(b => b.StartsWith(current)).ToList();
 
+                // 2. Get PATH executable matches
+                string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                string[] paths = pathEnv.Split(Path.PathSeparator);
+
+                foreach (string dir in paths)
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        try
+                        {
+                            // Grab all files in this directory
+                            var filesInDir = Directory.GetFiles(dir);
+
+                            foreach (string file in filesInDir)
+                            {
+                                // Extract just the name (e.g., "custom_executable")
+                                string fileName = Path.GetFileName(file);
+
+                                // If it matches what the user typed, add it to our list
+                                if (fileName.StartsWith(current))
+                                {
+                                    matches.Add(fileName);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // If we don't have permission to read a specific folder, safely ignore it
+                        }
+                    }
+                }
+
+                // 3. Remove duplicates (in case the same program exists in multiple folders)
+                matches = matches.Distinct().ToList();
+
+                // 4. Handle the autocomplete
                 if (matches.Count == 1)
                 {
                     string match = matches[0];
-                    // Figure out exactly what letters are missing, plus the trailing space
                     string remainder = match.Substring(current.Length) + " ";
 
                     sb.Append(remainder);
-                    Console.Write(remainder); // Print only the missing letters!
+                    Console.Write(remainder);
                 }
                 else
                 {
-                    // Standard terminal behavior: if 0 matches or multiple matches, ring the warning bell
                     Console.Write("\a");
                 }
             }
             else
             {
-                // Standard typing: save the character and print it
                 sb.Append(keyInfo.KeyChar);
                 Console.Write(keyInfo.KeyChar);
             }
