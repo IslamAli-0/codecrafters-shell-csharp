@@ -284,41 +284,49 @@ class Program
                 if (matches.Count == 1)
                 {
                     string match = matches[0];
-                    string remainder = match.Substring(current.Length) + " ";
+                    string remainder = match.Substring(current.Length) + " "; // Trailing space ONLY for 1 match
 
                     sb.Append(remainder);
                     Console.Write(remainder);
 
-                    previousKeyWasTab = false; // Reset memory
+                    previousKeyWasTab = false;
                 }
                 else if (matches.Count > 1)
                 {
-                    if (!previousKeyWasTab)
+                    // NEW: Find the Longest Common Prefix
+                    string lcp = GetLongestCommonPrefix(matches);
+
+                    if (lcp.Length > current.Length)
                     {
-                        // FIRST TAB: Just ring the bell and remember it
-                        Console.Write("\a");
-                        previousKeyWasTab = true;
+                        // We can autocomplete a partial chunk!
+                        string remainder = lcp.Substring(current.Length); // NO trailing space here!
+
+                        sb.Append(remainder);
+                        Console.Write(remainder);
+
+                        // Reset memory because we made progress for the user
+                        previousKeyWasTab = false;
                     }
                     else
                     {
-                        // SECOND TAB: Print the list!
-                        Console.WriteLine(); // Move to a new line
-
-                        // Sort alphabetically
-                        matches.Sort();
-
-                        // Print them separated by exactly two spaces
-                        Console.WriteLine(string.Join("  ", matches));
-
-                        // Reprint the prompt and whatever they were typing
-                        Console.Write("$ " + current);
-
-                        previousKeyWasTab = false; // Reset memory
+                        // We can't autocomplete any further. Do the standard double-tab logic.
+                        if (!previousKeyWasTab)
+                        {
+                            Console.Write("\a");
+                            previousKeyWasTab = true;
+                        }
+                        else
+                        {
+                            Console.WriteLine();
+                            matches.Sort();
+                            Console.WriteLine(string.Join("  ", matches));
+                            Console.Write("$ " + current);
+                            previousKeyWasTab = false;
+                        }
                     }
                 }
                 else
                 {
-                    // Zero matches
                     Console.Write("\a");
                     previousKeyWasTab = false;
                 }
@@ -329,5 +337,25 @@ class Program
                 Console.Write(keyInfo.KeyChar);
             }
         }
+    }
+
+    // --- NEW HELPER METHOD ---
+    private static string GetLongestCommonPrefix(List<string> strs)
+    {
+        if (strs == null || strs.Count == 0) return "";
+
+        // Start by assuming the first word is the prefix
+        string prefix = strs[0];
+
+        for (int i = 1; i < strs.Count; i++)
+        {
+            // If the next word doesn't start with our prefix, chop a letter off the end and try again
+            while (!strs[i].StartsWith(prefix))
+            {
+                prefix = prefix.Substring(0, prefix.Length - 1);
+                if (prefix == "") return "";
+            }
+        }
+        return prefix;
     }
 }
