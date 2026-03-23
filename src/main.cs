@@ -218,6 +218,9 @@ class Program
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
         string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
 
+        // NEW: Our short-term memory flag
+        bool previousKeyWasTab = false;
+
         while (true)
         {
             var keyInfo = Console.ReadKey(intercept: true);
@@ -285,10 +288,39 @@ class Program
 
                     sb.Append(remainder);
                     Console.Write(remainder);
+
+                    previousKeyWasTab = false; // Reset memory
+                }
+                else if (matches.Count > 1)
+                {
+                    if (!previousKeyWasTab)
+                    {
+                        // FIRST TAB: Just ring the bell and remember it
+                        Console.Write("\a");
+                        previousKeyWasTab = true;
+                    }
+                    else
+                    {
+                        // SECOND TAB: Print the list!
+                        Console.WriteLine(); // Move to a new line
+
+                        // Sort alphabetically
+                        matches.Sort();
+
+                        // Print them separated by exactly two spaces
+                        Console.WriteLine(string.Join("  ", matches));
+
+                        // Reprint the prompt and whatever they were typing
+                        Console.Write("$ " + current);
+
+                        previousKeyWasTab = false; // Reset memory
+                    }
                 }
                 else
                 {
+                    // Zero matches
                     Console.Write("\a");
+                    previousKeyWasTab = false;
                 }
             }
             else
