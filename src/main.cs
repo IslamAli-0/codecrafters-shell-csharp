@@ -435,6 +435,9 @@ class Program
         StringBuilder sb = new StringBuilder();
         bool previousKeyWasTab = false;
 
+        // Start the pointer at the end of the history
+        int historyPointer = commandHistory.Count;
+
         while (true)
         {
             var keyInfo = Console.ReadKey(intercept: true);
@@ -466,6 +469,46 @@ class Program
                 else
                 {
                     HandleCommandCompletion(current, sb, ref previousKeyWasTab);
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.UpArrow)
+            {
+                if (historyPointer > 0)
+                {
+                    // 1. Move back in time
+                    historyPointer--;
+                    string previousCommand = commandHistory[historyPointer];
+
+                    // 2. Clear current line on screen
+                    // We go back by the current sb.Length
+                    while (sb.Length > 0)
+                    {
+                        Console.Write("\b \b");
+                        sb.Length--;
+                    }
+
+                    // 3. Load the historical command
+                    sb.Append(previousCommand);
+                    Console.Write(previousCommand);
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.DownArrow)
+            {
+                if (historyPointer < commandHistory.Count - 1)
+                {
+                    historyPointer++;
+                    string nextCommand = commandHistory[historyPointer];
+
+                    // Clear and Replace (Same logic as Up Arrow)
+                    while (sb.Length > 0) { Console.Write("\b \b"); sb.Length--; }
+                    sb.Append(nextCommand);
+                    Console.Write(nextCommand);
+                }
+                else if (historyPointer == commandHistory.Count - 1)
+                {
+                    // If we go past the last item, show an empty line
+                    historyPointer = commandHistory.Count;
+                    while (sb.Length > 0) { Console.Write("\b \b"); sb.Length--; }
                 }
             }
             else
