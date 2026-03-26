@@ -169,12 +169,22 @@ class Program
 
         if (command.StartsWith("type "))
         {
+            // 1. Get the target (e.g., "cat" from "type cat")
             string target = command.Substring(5).Trim();
-            // REMEMBER TO ADD "history" TO THIS LIST
+
+            // 2. Check Builtins
             string[] builtins = { "type", "exit", "echo", "pwd", "cd", "history" };
             if (builtins.Contains(target)) return $"{target} is a shell builtin\n";
 
-            // ... rest of type logic ...
+            // 3. Check PATH
+            // Make sure your FileExistsAndExecutable is actually checking /bin/cat!
+            if (FileExistsAndExecutable(target, out string path))
+            {
+                return $"{target} is {path}\n";
+            }
+
+            // 4. Fallback
+            return $"{target}: not found\n";
         }
 
         return null; // Not a builtin
