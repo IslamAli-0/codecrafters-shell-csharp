@@ -13,6 +13,18 @@ class Program
             // Use new raw method instead of Console.ReadLine()
             string command = ReadCommand();
 
+            // --- NEW PIPELINE INTERCEPTOR ---
+            if (command.Contains(" | "))
+            {
+                // Split the command in half at the pipe
+                int pipeIndex = command.IndexOf(" | ");
+                string leftCmd = command.Substring(0, pipeIndex).Trim();
+                string rightCmd = command.Substring(pipeIndex + 3).Trim();
+
+                ExecutePipeline(leftCmd, rightCmd);
+                continue; // Skip the rest of the loop, the pipeline handled it!
+            }
+
             if (string.IsNullOrWhiteSpace(command)) continue;
 
             // --- REDIRECTION INTERCEPTOR ---
@@ -128,17 +140,6 @@ class Program
             }
             else
             {
-                // --- NEW PIPELINE INTERCEPTOR ---
-                if (command.Contains(" | "))
-                {
-                    // Split the command in half at the pipe
-                    int pipeIndex = command.IndexOf(" | ");
-                    string leftCmd = command.Substring(0, pipeIndex).Trim();
-                    string rightCmd = command.Substring(pipeIndex + 3).Trim();
-
-                    ExecutePipeline(leftCmd, rightCmd);
-                    continue; // Skip the rest of the loop, the pipeline handled it!
-                }
                 string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
 
