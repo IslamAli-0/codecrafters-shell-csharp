@@ -10,32 +10,30 @@ class Program
         while (true)
         {
             Console.Write("$ ");
-            // Use new raw method instead of Console.ReadLine()
             string command = ReadCommand();
-
-            // --- NEW PIPELINE INTERCEPTOR ---
-            if (command.Contains(" | "))
-            {
-                // Split the command in half at the pipe
-                int pipeIndex = command.IndexOf(" | ");
-                string leftCmd = command.Substring(0, pipeIndex).Trim();
-                string rightCmd = command.Substring(pipeIndex + 3).Trim();
-
-                ExecutePipeline(leftCmd, rightCmd);
-                continue; // Skip the rest of the loop, the pipeline handled it!
-            }
 
             if (string.IsNullOrWhiteSpace(command)) continue;
 
-            // --- REDIRECTION INTERCEPTOR ---
+            // 1. HIGHEST PRIORITY: Pipelines
+            // We check this first because a pipeline might contain built-ins or redirection
+            if (command.Contains("|")) // Changed from " | " to just "|" to be safer
+            {
+                // Split the entire thing into an array: ["cat file", " head -n 3", " wc"]
+                string[] stages = command.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < stages.Length; i++) stages[i] = stages[i].Trim();
+
+                ExecuteMultiStagePipeline(stages);
+                continue;
+            }
+            // 2. SECOND PRIORITY: Redirection Interceptor
+            // We parse this before execution so we know if we need to 'trap' the output
             string redirectPath = string.Empty;
             int redirectType = 0; // 0 = none, 1 = stdout, 2 = stderr
             bool appendMode = false;
-
             int redirectIndex = -1;
             string operatorStr = "";
 
-            // CRITICAL: Check for longest operators first!
+            // Check for longest operators first to avoid partial matching (e.g., '>>' before '>')
             if (command.Contains(" 2>> ")) { redirectIndex = command.IndexOf(" 2>> "); operatorStr = " 2>> "; redirectType = 2; appendMode = true; }
             else if (command.Contains(" 1>> ")) { redirectIndex = command.IndexOf(" 1>> "); operatorStr = " 1>> "; redirectType = 1; appendMode = true; }
             else if (command.Contains(" >> ")) { redirectIndex = command.IndexOf(" >> "); operatorStr = " >> "; redirectType = 1; appendMode = true; }
@@ -43,69 +41,31 @@ class Program
             else if (command.Contains(" 2> ")) { redirectIndex = command.IndexOf(" 2> "); operatorStr = " 2> "; redirectType = 2; }
             else if (command.Contains(" > ")) { redirectIndex = command.IndexOf(" > "); operatorStr = " > "; redirectType = 1; }
 
-            // If we found ANY redirection operator, slice the string
             if (redirectIndex != -1)
             {
                 redirectPath = command.Substring(redirectIndex + operatorStr.Length).Trim();
                 command = command.Substring(0, redirectIndex).Trim();
             }
-            // -------------------------------------
 
-            if (command == "exit")
+            // 3. THIRD PRIORITY: Shell Built-ins
+            // We check for 'exit' separately because it needs to 'break' the loop
+            if (command == "exit") break;
+
+            // Use the Master Function for all other built-ins
+            string? builtinOutput = ExecuteBuiltin(command);
+            if (builtinOutput != null)
             {
-                break;
-            }
-            else if (command == "pwd")
-            {
-                Console.WriteLine(Directory.GetCurrentDirectory());
-                continue;
-            }
-            else if (command.StartsWith("cd "))
-            {
-                string dir = command.Substring(3).Trim();
-                if (dir == "~")
+                if (redirectType == 1) // Redirect Standard Output
                 {
-                    dir = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
-                    Directory.SetCurrentDirectory(dir);
-                }
-                else if (dir.StartsWith("/"))
-                {
-                    if (Directory.Exists(dir))
-                    {
-                        Directory.SetCurrentDirectory(dir);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"cd: {dir}: No such file or directory");
-                    }
+                    if (appendMode) File.AppendAllText(redirectPath, builtinOutput);
+                    else File.WriteAllText(redirectPath, builtinOutput);
                 }
                 else
                 {
-                    dir = Path.GetFullPath(dir);
-                    if (Directory.Exists(dir))
-                    {
-                        Directory.SetCurrentDirectory(dir);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"cd: {dir}: No such file or directory");
-                    }
-                }
-                continue;
-            }
-            else if (command.StartsWith("echo ")) // Added space here to ensure it only catches "echo "
-            {
-                string outputText = command.Substring(5).Trim().Trim('\'', '"');
+                    // Print to screen if no redirection (or if it's 2> which doesn't apply to success)
+                    Console.Write(builtinOutput);
 
-                if (redirectType == 1)
-                {
-                    if (appendMode) File.AppendAllText(redirectPath, outputText + "\n");
-                    else File.WriteAllText(redirectPath, outputText + "\n");
-                }
-                else
-                {
-                    Console.WriteLine(outputText);
-
+                    // Edge case: if user did 'echo hi 2> file', we print 'hi' but must create/touch the file
                     if (redirectType == 2)
                     {
                         if (appendMode) File.AppendAllText(redirectPath, "");
@@ -114,77 +74,12 @@ class Program
                 }
                 continue;
             }
-            else if (command.StartsWith("type "))
-            {
-                string target = command.Substring(5).Trim();
 
-                if (target == "type" || target == "exit" || target == "echo" || target == "pwd" || target == "cd")
-                {
-                    Console.WriteLine($"{target} is a shell builtin");
-                }
-                else
-                {
-                    string PathofFile;
-                    bool ExistsAndExecutable = FileExistsAndExecutable(target, out PathofFile);
-
-                    if (ExistsAndExecutable)
-                    {
-                        Console.WriteLine($"{target} is {PathofFile}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"{target}: not found");
-                    }
-                }
-                continue;
-            }
-            else
-            {
-                string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length == 0) continue;
-
-                string programName = parts[0];
-                string arguments = parts.Length > 1 ? string.Join(" ", parts[1..]) : "";
-
-                bool ExistsAndExecutable = FileExistsAndExecutable(programName);
-
-                if (ExistsAndExecutable)
-                {
-                    Process process = new Process();
-                    process.StartInfo.FileName = programName;
-                    process.StartInfo.Arguments = arguments;
-                    process.StartInfo.UseShellExecute = false;
-
-                    // Set up the correct pipe trapping
-                    if (redirectType == 1) process.StartInfo.RedirectStandardOutput = true;
-                    else if (redirectType == 2) process.StartInfo.RedirectStandardError = true;
-
-                    process.Start();
-
-                    // Grab and save the trapped output
-                    if (redirectType == 1)
-                    {
-                        string trappedOutput = process.StandardOutput.ReadToEnd();
-                        if (appendMode) File.AppendAllText(redirectPath, trappedOutput);
-                        else File.WriteAllText(redirectPath, trappedOutput);
-                    }
-                    else if (redirectType == 2)
-                    {
-                        string trappedError = process.StandardError.ReadToEnd();
-                        if (appendMode) File.AppendAllText(redirectPath, trappedError);
-                        else File.WriteAllText(redirectPath, trappedError);
-                    }
-
-                    process.WaitForExit();
-                }
-                else
-                {
-                    Console.WriteLine($"{command}: command not found");
-                }
-            }
+            // 4. LOWEST PRIORITY: External Programs
+            // If nothing else claimed the command, try to run it as a file in the PATH
+            ExecuteExternal(command, redirectType, redirectPath, appendMode);
         }
     }
-
     // --- HELPER METHODS ---
     public static bool FileExistsAndExecutable(string name, out string fullpath)
     {
@@ -247,6 +142,45 @@ class Program
             return $"{target}: not found\n";
         }
         return null; // Not a builtin
+    }
+
+    private static void ExecuteExternal(string command, int redirectType, string redirectPath, bool appendMode)
+    {
+        var (programName, arguments) = ParseCommand(command);
+
+        if (FileExistsAndExecutable(programName))
+        {
+            // Use your StartProcess helper to keep it clean!
+            bool redirectOutput = (redirectType == 1);
+            bool redirectError = (redirectType == 2);
+
+            Process process = new Process();
+            process.StartInfo.FileName = programName;
+            process.StartInfo.Arguments = arguments;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = redirectOutput;
+            process.StartInfo.RedirectStandardError = redirectError;
+            process.Start();
+
+            if (redirectOutput)
+            {
+                string trappedOutput = process.StandardOutput.ReadToEnd();
+                if (appendMode) File.AppendAllText(redirectPath, trappedOutput);
+                else File.WriteAllText(redirectPath, trappedOutput);
+            }
+            else if (redirectError)
+            {
+                string trappedError = process.StandardError.ReadToEnd();
+                if (appendMode) File.AppendAllText(redirectPath, trappedError);
+                else File.WriteAllText(redirectPath, trappedError);
+            }
+
+            process.WaitForExit();
+        }
+        else
+        {
+            Console.WriteLine($"{command}: command not found");
+        }
     }
     private static void RunExternalPipeline(string leftCommand, string rightCommand)
     {
@@ -325,47 +259,129 @@ class Program
         }
     }
 
-    private static void ExecutePipeline(string leftCommand, string rightCommand)
+    // private static void ExecutePipeline(string leftCommand, string rightCommand)
+    // {
+    //     // Try to run the left and right as built-ins first
+    //     string? leftBuiltinOutput = ExecuteBuiltin(leftCommand);
+    //     bool rightIsBuiltin = IsBuiltin(rightCommand);
+
+    //     // --- CASE 1: Built-in | External (e.g., echo "hi" | wc) ---
+    //     if (leftBuiltinOutput != null && !rightIsBuiltin)
+    //     {
+    //         var (prog, args) = ParseCommand(rightCommand);
+    //         Process rightProc = StartProcess(prog, args, redirectIn: true, redirectOut: false);
+
+    //         // Directly shove the string from C# into the program's mouth
+    //         rightProc.StandardInput.Write(leftBuiltinOutput);
+    //         rightProc.StandardInput.Close();
+    //         rightProc.WaitForExit();
+    //     }
+    //     // --- CASE 2: External | Built-in (e.g., ls | type exit) ---
+    //     else if (leftBuiltinOutput == null && rightIsBuiltin)
+    //     {
+    //         var (prog, args) = ParseCommand(leftCommand);
+    //         Process leftProc = StartProcess(prog, args, redirectIn: false, redirectOut: true);
+
+    //         // We execute the built-in logic and ignore the left process's output
+    //         // (Most built-ins like 'type' or 'cd' don't read from stdin)
+    //         string? result = ExecuteBuiltin(rightCommand);
+    //         Console.Write(result);
+
+    //         leftProc.Kill(); // We don't need the left side anymore
+    //     }
+    //     // --- CASE 3: External | External (The "Bucket Brigade") ---
+    //     else if (leftBuiltinOutput == null && !rightIsBuiltin)
+    //     {
+    //         // This is your existing code logic for two external processes
+    //         RunExternalPipeline(leftCommand, rightCommand);
+    //     }
+    //     // --- CASE 4: Built-in | Built-in (e.g., echo "hi" | type pwd) ---
+    //     else
+    //     {
+    //         string? result = ExecuteBuiltin(rightCommand);
+    //         Console.Write(result);
+    //     }
+    // }
+
+    private static void ExecuteMultiStagePipeline(string[] stages)
     {
-        // Try to run the left and right as built-ins first
-        string? leftBuiltinOutput = ExecuteBuiltin(leftCommand);
-        bool rightIsBuiltin = IsBuiltin(rightCommand);
+        List<Process> processes = new List<Process>();
+        Stream? previousOutput = null;
 
-        // --- CASE 1: Built-in | External (e.g., echo "hi" | wc) ---
-        if (leftBuiltinOutput != null && !rightIsBuiltin)
+        for (int i = 0; i < stages.Length; i++)
         {
-            var (prog, args) = ParseCommand(rightCommand);
-            Process rightProc = StartProcess(prog, args, redirectIn: true, redirectOut: false);
+            string currentStage = stages[i];
 
-            // Directly shove the string from C# into the program's mouth
-            rightProc.StandardInput.Write(leftBuiltinOutput);
-            rightProc.StandardInput.Close();
-            rightProc.WaitForExit();
+            // Check if this specific stage is a built-in
+            string? builtinResult = ExecuteBuiltin(currentStage);
+
+            if (builtinResult != null)
+            {
+                // --- Built-in Logic ---
+                // If it's a built-in on the left or middle, we catch its string
+                // and prepare it for the next process.
+                // (Note: For simplicity in this stage, we'll treat built-ins 
+                // as simple string providers/consumers)
+                previousOutput = new MemoryStream(Encoding.UTF8.GetBytes(builtinResult));
+            }
+            else
+            {
+                // --- External Process Logic ---
+                var (prog, args) = ParseCommand(currentStage);
+                Process proc = new Process();
+                proc.StartInfo.FileName = prog;
+                proc.StartInfo.Arguments = args;
+                proc.StartInfo.UseShellExecute = false;
+
+                // Connect Input: If there's a previous stage, we need to redirect STDIN
+                if (previousOutput != null || i > 0) proc.StartInfo.RedirectStandardInput = true;
+
+                // Connect Output: If we aren't the last stage, we need to redirect STDOUT
+                if (i < stages.Length - 1) proc.StartInfo.RedirectStandardOutput = true;
+
+                proc.Start();
+                processes.Add(proc);
+
+                // If we have data from a previous stage, shove it into this one
+                if (previousOutput != null)
+                {
+                    Stream currentIn = proc.StandardInput.BaseStream;
+                    Stream source = previousOutput;
+
+                    // We use a Task to stream so we don't block the loop
+                    Task.Run(() =>
+                    {
+                        try
+                        {
+                            source.CopyTo(currentIn);
+                            currentIn.Flush();
+                        }
+                        catch { }
+                        finally
+                        {
+                            currentIn.Close();
+                        }
+                    });
+                }
+
+                // Set the "previousOutput" for the NEXT iteration of the loop
+                if (i < stages.Length - 1)
+                {
+                    previousOutput = proc.StandardOutput.BaseStream;
+                }
+            }
         }
-        // --- CASE 2: External | Built-in (e.g., ls | type exit) ---
-        else if (leftBuiltinOutput == null && rightIsBuiltin)
-        {
-            var (prog, args) = ParseCommand(leftCommand);
-            Process leftProc = StartProcess(prog, args, redirectIn: false, redirectOut: true);
 
-            // We execute the built-in logic and ignore the left process's output
-            // (Most built-ins like 'type' or 'cd' don't read from stdin)
-            string? result = ExecuteBuiltin(rightCommand);
-            Console.Write(result);
+        // Wait for the LAST process in the chain to finish
+        if (processes.Count > 0)
+        {
+            processes.Last().WaitForExit();
+        }
 
-            leftProc.Kill(); // We don't need the left side anymore
-        }
-        // --- CASE 3: External | External (The "Bucket Brigade") ---
-        else if (leftBuiltinOutput == null && !rightIsBuiltin)
+        // Assassination: Kill any infinite processes (like tail -f) still hanging around
+        foreach (var p in processes)
         {
-            // This is your existing code logic for two external processes
-            RunExternalPipeline(leftCommand, rightCommand);
-        }
-        // --- CASE 4: Built-in | Built-in (e.g., echo "hi" | type pwd) ---
-        else
-        {
-            string? result = ExecuteBuiltin(rightCommand);
-            Console.Write(result);
+            if (!p.HasExited) try { p.Kill(); } catch { }
         }
     }
     private static string ReadCommand()
