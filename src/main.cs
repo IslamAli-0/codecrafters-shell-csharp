@@ -254,31 +254,28 @@ class Program
                     string searchDir = "";
                     string filePrefix = fullArg;
 
-                    // Check if they are typing a nested path
                     int lastSlashIndex = fullArg.LastIndexOf('/');
                     if (lastSlashIndex >= 0)
                     {
-                        // Split it! e.g., "path/to/" and "f"
                         searchDir = fullArg.Substring(0, lastSlashIndex + 1);
                         filePrefix = fullArg.Substring(lastSlashIndex + 1);
                     }
 
-                    // Path.Combine is magic. If searchDir is empty, it just uses the current directory!
                     string targetDir = Path.Combine(Directory.GetCurrentDirectory(), searchDir);
-
                     var fileMatches = new List<string>();
 
                     if (Directory.Exists(targetDir))
                     {
                         try
                         {
-                            var files = Directory.GetFiles(targetDir);
-                            foreach (var file in files)
+                            // UPGRADE 1: Get BOTH files and directories!
+                            var entries = Directory.GetFileSystemEntries(targetDir);
+                            foreach (var entry in entries)
                             {
-                                string fileName = Path.GetFileName(file);
-                                if (fileName.StartsWith(filePrefix))
+                                string entryName = Path.GetFileName(entry);
+                                if (entryName.StartsWith(filePrefix))
                                 {
-                                    fileMatches.Add(fileName);
+                                    fileMatches.Add(entryName);
                                 }
                             }
                         }
@@ -288,8 +285,18 @@ class Program
                     if (fileMatches.Count == 1)
                     {
                         string match = fileMatches[0];
-                        // We only append the missing letters of the filename itself!
-                        string remainder = match.Substring(filePrefix.Length) + " ";
+                        string remainder = match.Substring(filePrefix.Length);
+
+                        // UPGRADE 2: Check if the match is a directory to decide the trailing character
+                        string fullMatchPath = Path.Combine(targetDir, match);
+                        if (Directory.Exists(fullMatchPath))
+                        {
+                            remainder += "/"; // Directory gets a slash!
+                        }
+                        else
+                        {
+                            remainder += " "; // File gets a space!
+                        }
 
                         sb.Append(remainder);
                         Console.Write(remainder);
@@ -297,7 +304,6 @@ class Program
                     }
                     else
                     {
-                        // If 0 matches or multiple matches for files
                         Console.Write("\a");
                         previousKeyWasTab = false;
                     }
