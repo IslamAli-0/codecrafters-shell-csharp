@@ -237,7 +237,6 @@ class Program
         string rightProgram = rightParts[0];
         string rightArgs = rightParts.Length > 1 ? string.Join(" ", rightParts[1..]) : "";
 
-        // 3. Verify both exist!
         if (!FileExistsAndExecutable(leftProgram) || !FileExistsAndExecutable(rightProgram))
         {
             Console.WriteLine("Command not found in pipeline");
@@ -249,51 +248,57 @@ class Program
         leftProcess.StartInfo.FileName = leftProgram;
         leftProcess.StartInfo.Arguments = leftArgs;
         leftProcess.StartInfo.UseShellExecute = false;
-        leftProcess.StartInfo.RedirectStandardOutput = true; // "Don't print to screen!"
+        leftProcess.StartInfo.RedirectStandardOutput = true; // We MUST redirect this to grab it
 
         // 5. Set up Right Process (The Listener)
         Process rightProcess = new Process();
         rightProcess.StartInfo.FileName = rightProgram;
         rightProcess.StartInfo.Arguments = rightArgs;
         rightProcess.StartInfo.UseShellExecute = false;
-        rightProcess.StartInfo.RedirectStandardInput = true;  // "Listen to C#, not the keyboard!"
-        rightProcess.StartInfo.RedirectStandardOutput = true; // "Send C# the final answer!"
+        rightProcess.StartInfo.RedirectStandardInput = true;  // We MUST redirect this to feed it
+
+        // UPGRADE 1: Let the Right program talk directly to the screen! (No ReadToEnd needed)
+        rightProcess.StartInfo.RedirectStandardOutput = false;
 
         // 6. Start them both simultaneously
         leftProcess.Start();
         rightProcess.Start();
 
-        // 7. The Bucket Brigade (Runs in the background so our shell doesn't freeze)
+        // 7. The Active Bucket Brigade
         Task.Run(() =>
         {
             try
             {
-                // Instantly stream data from Left to Right as it generates
-                leftProcess.StandardOutput.BaseStream.CopyTo(rightProcess.StandardInput.BaseStream);
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+
+                // UPGRADE 2: Read chunks as they arrive, even if the bucket isn't full
+                while ((bytesRead = leftProcess.StandardOutput.BaseStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    rightProcess.StandardInput.BaseStream.Write(buffer, 0, bytesRead);
+
+                    // CRITICAL: Shove the data down the pipe immediately so 'head' gets it!
+                    rightProcess.StandardInput.BaseStream.Flush();
+                }
             }
             catch
             {
-                // This catches the "Broken Pipe" error if the Right process shuts down early!
+                // Catches the Broken Pipe if the Right process exits early
             }
             finally
             {
-                // CRITICAL: We MUST close the door. This tells the Right process "No more data is coming!"
-                // If we don't do this, commands like 'wc' will sit frozen forever waiting for more words.
-                rightProcess.StandardInput.Close();
+                rightProcess.StandardInput.Close(); // Slam the door shut
             }
         });
 
-        // 8. Grab the final answer from the Right process and print it
-        string finalOutput = rightProcess.StandardOutput.ReadToEnd();
-        Console.Write(finalOutput);
-
-        // 9. Wait for the Right process to officially finish
+        // 8. Wait for the Right process to officially finish 
+        // (It will exit natively once it hits its 5-line limit)
         rightProcess.WaitForExit();
 
-        // 10. The Assassination (Fixes the tail -f deadlock trap)
+        // 9. The Assassination
         if (!leftProcess.HasExited)
         {
-            leftProcess.Kill();
+            try { leftProcess.Kill(); } catch { } // Safely kill the infinite tail
         }
     }
 
