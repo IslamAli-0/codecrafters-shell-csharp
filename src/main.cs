@@ -224,7 +224,7 @@ class Program
     {
         return FileExistsAndExecutable(name, out _);
     }
-    private static string ExecuteBuiltin(string command)
+    private static string? ExecuteBuiltin(string command)
     {
         if (command.StartsWith("echo "))
         {
@@ -327,7 +327,7 @@ class Program
     private static void ExecutePipeline(string leftCommand, string rightCommand)
     {
         // Try to run the left and right as built-ins first
-        string leftBuiltinOutput = ExecuteBuiltin(leftCommand);
+        string? leftBuiltinOutput = ExecuteBuiltin(leftCommand);
         bool rightIsBuiltin = IsBuiltin(rightCommand);
 
         // --- CASE 1: Built-in | External (e.g., echo "hi" | wc) ---
@@ -349,7 +349,7 @@ class Program
 
             // We execute the built-in logic and ignore the left process's output
             // (Most built-ins like 'type' or 'cd' don't read from stdin)
-            string result = ExecuteBuiltin(rightCommand);
+            string? result = ExecuteBuiltin(rightCommand);
             Console.Write(result);
 
             leftProc.Kill(); // We don't need the left side anymore
@@ -363,7 +363,7 @@ class Program
         // --- CASE 4: Built-in | Built-in (e.g., echo "hi" | type pwd) ---
         else
         {
-            string result = ExecuteBuiltin(rightCommand);
+            string? result = ExecuteBuiltin(rightCommand);
             Console.Write(result);
         }
     }
