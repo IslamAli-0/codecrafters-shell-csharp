@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.IO;
 using System;
 
@@ -9,7 +10,7 @@ class Program
         while (true)
         {
             Console.Write("$ ");
-            // Use our brand new raw method instead of Console.ReadLine()
+            // Use new raw method instead of Console.ReadLine()
             string command = ReadCommand();
 
             if (string.IsNullOrWhiteSpace(command)) continue;
@@ -127,6 +128,17 @@ class Program
             }
             else
             {
+                // --- NEW PIPELINE INTERCEPTOR ---
+                if (command.Contains(" | "))
+                {
+                    // Split the command in half at the pipe
+                    int pipeIndex = command.IndexOf(" | ");
+                    string leftCmd = command.Substring(0, pipeIndex).Trim();
+                    string rightCmd = command.Substring(pipeIndex + 3).Trim();
+
+                    ExecutePipeline(leftCmd, rightCmd);
+                    continue; // Skip the rest of the loop, the pipeline handled it!
+                }
                 string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
 
@@ -208,14 +220,86 @@ class Program
         fullpath = string.Empty;
         return false;
     }
-
     public static bool FileExistsAndExecutable(string name)
     {
         return FileExistsAndExecutable(name, out _);
     }
+
+    private static void ExecutePipeline(string leftCommand, string rightCommand)
+    {
+        // 1. Parse Left Command
+        string[] leftParts = leftCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string leftProgram = leftParts[0];
+        string leftArgs = leftParts.Length > 1 ? string.Join(" ", leftParts[1..]) : "";
+
+        // 2. Parse Right Command
+        string[] rightParts = rightCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string rightProgram = rightParts[0];
+        string rightArgs = rightParts.Length > 1 ? string.Join(" ", rightParts[1..]) : "";
+
+        // 3. Verify both exist!
+        if (!FileExistsAndExecutable(leftProgram) || !FileExistsAndExecutable(rightProgram))
+        {
+            Console.WriteLine("Command not found in pipeline");
+            return;
+        }
+
+        // 4. Set up Left Process (The Talker)
+        Process leftProcess = new Process();
+        leftProcess.StartInfo.FileName = leftProgram;
+        leftProcess.StartInfo.Arguments = leftArgs;
+        leftProcess.StartInfo.UseShellExecute = false;
+        leftProcess.StartInfo.RedirectStandardOutput = true; // "Don't print to screen!"
+
+        // 5. Set up Right Process (The Listener)
+        Process rightProcess = new Process();
+        rightProcess.StartInfo.FileName = rightProgram;
+        rightProcess.StartInfo.Arguments = rightArgs;
+        rightProcess.StartInfo.UseShellExecute = false;
+        rightProcess.StartInfo.RedirectStandardInput = true;  // "Listen to C#, not the keyboard!"
+        rightProcess.StartInfo.RedirectStandardOutput = true; // "Send C# the final answer!"
+
+        // 6. Start them both simultaneously
+        leftProcess.Start();
+        rightProcess.Start();
+
+        // 7. The Bucket Brigade (Runs in the background so our shell doesn't freeze)
+        Task.Run(() =>
+        {
+            try
+            {
+                // Instantly stream data from Left to Right as it generates
+                leftProcess.StandardOutput.BaseStream.CopyTo(rightProcess.StandardInput.BaseStream);
+            }
+            catch
+            {
+                // This catches the "Broken Pipe" error if the Right process shuts down early!
+            }
+            finally
+            {
+                // CRITICAL: We MUST close the door. This tells the Right process "No more data is coming!"
+                // If we don't do this, commands like 'wc' will sit frozen forever waiting for more words.
+                rightProcess.StandardInput.Close();
+            }
+        });
+
+        // 8. Grab the final answer from the Right process and print it
+        string finalOutput = rightProcess.StandardOutput.ReadToEnd();
+        Console.Write(finalOutput);
+
+        // 9. Wait for the Right process to officially finish
+        rightProcess.WaitForExit();
+
+        // 10. The Assassination (Fixes the tail -f deadlock trap)
+        if (!leftProcess.HasExited)
+        {
+            leftProcess.Kill();
+        }
+    }
+
     private static string ReadCommand()
     {
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        StringBuilder sb = new StringBuilder();
         bool previousKeyWasTab = false;
 
         while (true)
@@ -260,7 +344,7 @@ class Program
             }
         }
     }
-    private static void HandleCommandCompletion(string current, System.Text.StringBuilder sb, ref bool previousKeyWasTab)
+    private static void HandleCommandCompletion(string current, StringBuilder sb, ref bool previousKeyWasTab)
     {
         string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
         var matches = builtins.Where(b => b.StartsWith(current)).ToList();
@@ -329,7 +413,7 @@ class Program
             previousKeyWasTab = false;
         }
     }
-    private static void HandleArgumentCompletion(string current, int lastSpaceIndex, System.Text.StringBuilder sb, ref bool previousKeyWasTab)
+    private static void HandleArgumentCompletion(string current, int lastSpaceIndex, StringBuilder sb, ref bool previousKeyWasTab)
     {
         string fullArg = current.Substring(lastSpaceIndex + 1);
         string searchDir = "";
@@ -413,8 +497,6 @@ class Program
             previousKeyWasTab = false;
         }
     }
-
-    // --- NEW HELPER METHOD ---
     private static string GetLongestCommonPrefix(List<string> strs)
     {
         if (strs == null || strs.Count == 0) return "";
