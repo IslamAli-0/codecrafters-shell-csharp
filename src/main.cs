@@ -268,7 +268,6 @@ class Program
                     {
                         try
                         {
-                            // UPGRADE 1: Get BOTH files and directories!
                             var entries = Directory.GetFileSystemEntries(targetDir);
                             foreach (var entry in entries)
                             {
@@ -290,11 +289,11 @@ class Program
                         string fullMatchPath = Path.Combine(targetDir, match);
                         if (Directory.Exists(fullMatchPath))
                         {
-                            remainder += "/"; // Directory gets a slash!
+                            remainder += "/"; // Directory gets a slash
                         }
                         else
                         {
-                            remainder += " "; // File gets a space!
+                            remainder += " "; // File gets a space
                         }
 
                         sb.Append(remainder);
@@ -303,44 +302,51 @@ class Program
                     }
                     else if (fileMatches.Count > 1)
                     {
-                        if (!previousKeyWasTab)
+                        // LCP LOGIC FOR FILES!
+                        string lcp = GetLongestCommonPrefix(fileMatches);
+
+                        if (lcp.Length > filePrefix.Length)
                         {
-                            // FIRST TAB: Ring the bell and remember it
-                            Console.Write("\a");
-                            previousKeyWasTab = true;
+                            string remainder = lcp.Substring(filePrefix.Length);
+
+                            sb.Append(remainder);
+                            Console.Write(remainder);
+                            previousKeyWasTab = false;
                         }
                         else
                         {
-                            // SECOND TAB: Print the list!
-                            Console.WriteLine();
-                            fileMatches.Sort();
-
-                            // Format matches for display (add trailing slashes to directories)
-                            var displayMatches = new List<string>();
-                            foreach (var match in fileMatches)
+                            if (!previousKeyWasTab)
                             {
-                                string fullMatchPath = Path.Combine(targetDir, match);
-                                if (Directory.Exists(fullMatchPath))
-                                {
-                                    displayMatches.Add(match + "/");
-                                }
-                                else
-                                {
-                                    displayMatches.Add(match);
-                                }
+                                Console.Write("\a");
+                                previousKeyWasTab = true;
                             }
+                            else
+                            {
+                                Console.WriteLine();
+                                fileMatches.Sort();
 
-                            // Print them separated by exactly two spaces
-                            Console.WriteLine(string.Join("  ", displayMatches));
+                                var displayMatches = new List<string>();
+                                foreach (var match in fileMatches)
+                                {
+                                    string fullMatchPath = Path.Combine(targetDir, match);
+                                    if (Directory.Exists(fullMatchPath))
+                                    {
+                                        displayMatches.Add(match + "/");
+                                    }
+                                    else
+                                    {
+                                        displayMatches.Add(match);
+                                    }
+                                }
 
-                            // Reprint the prompt and whatever they were typing
-                            Console.Write("$ " + current);
-                            previousKeyWasTab = false;
+                                Console.WriteLine(string.Join("  ", displayMatches));
+                                Console.Write("$ " + current);
+                                previousKeyWasTab = false;
+                            }
                         }
                     }
                     else
                     {
-                        // 0 matches
                         Console.Write("\a");
                         previousKeyWasTab = false;
                     }
