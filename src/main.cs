@@ -124,14 +124,33 @@ class Program
     {
         if (command.StartsWith("echo "))
         {
-            // Handle the echo \n escaped characters the tester is sending
             string text = command.Substring(5).Trim().Trim('\'', '"');
             return text.Replace("\\n", "\n") + "\n";
         }
+
         if (command == "pwd")
         {
             return Directory.GetCurrentDirectory() + "\n";
         }
+
+        if (command.StartsWith("cd "))
+        {
+            string dir = command.Substring(3).Trim();
+            try
+            {
+                if (dir == "~") dir = Environment.GetEnvironmentVariable("HOME") ?? "";
+                else dir = Path.GetFullPath(dir);
+
+                if (Directory.Exists(dir)) Directory.SetCurrentDirectory(dir);
+                else Console.WriteLine($"cd: {dir}: No such file or directory");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"cd: {e.Message}");
+            }
+            return ""; // Success, but no output string to pipe
+        }
+
         if (command.StartsWith("type "))
         {
             string target = command.Substring(5).Trim();
@@ -141,6 +160,7 @@ class Program
             if (FileExistsAndExecutable(target, out string path)) return $"{target} is {path}\n";
             return $"{target}: not found\n";
         }
+
         return null; // Not a builtin
     }
 
@@ -317,38 +337,40 @@ class Program
 
             if (builtinResult != null)
             {
-                // --- Built-in Logic ---
-                // If it's a built-in on the left or middle, we catch its string
-                // and prepare it for the next process.
-                // (Note: For simplicity in this stage, we'll treat built-ins 
-                // as simple string providers/consumers)
-                previousOutput = new MemoryStream(Encoding.UTF8.GetBytes(builtinResult));
+                // If it's the LAST stage (e.g., ls | type exit), we must print it!
+                if (i == stages.Length - 1)
+                {
+                    Console.Write(builtinResult);
+                }
+                else
+                {
+                    // If it's a middle stage, pass its string to the next one
+                    previousOutput = new MemoryStream(Encoding.UTF8.GetBytes(builtinResult));
+                }
             }
             else
             {
-                // --- External Process Logic ---
                 var (prog, args) = ParseCommand(currentStage);
                 Process proc = new Process();
                 proc.StartInfo.FileName = prog;
                 proc.StartInfo.Arguments = args;
                 proc.StartInfo.UseShellExecute = false;
 
-                // Connect Input: If there's a previous stage, we need to redirect STDIN
+                // Redirect Input if there's a previous stage
                 if (previousOutput != null || i > 0) proc.StartInfo.RedirectStandardInput = true;
 
-                // Connect Output: If we aren't the last stage, we need to redirect STDOUT
+                // Redirect Output if we aren't the last stage
                 if (i < stages.Length - 1) proc.StartInfo.RedirectStandardOutput = true;
 
                 proc.Start();
                 processes.Add(proc);
 
-                // If we have data from a previous stage, shove it into this one
+                // Stream data from previous stage into this one
                 if (previousOutput != null)
                 {
                     Stream currentIn = proc.StandardInput.BaseStream;
                     Stream source = previousOutput;
 
-                    // We use a Task to stream so we don't block the loop
                     Task.Run(() =>
                     {
                         try
@@ -364,7 +386,7 @@ class Program
                     });
                 }
 
-                // Set the "previousOutput" for the NEXT iteration of the loop
+                // Prepare the hose for the next iteration
                 if (i < stages.Length - 1)
                 {
                     previousOutput = proc.StandardOutput.BaseStream;
@@ -372,13 +394,13 @@ class Program
             }
         }
 
-        // Wait for the LAST process in the chain to finish
+        // Wait for the final process to finish
         if (processes.Count > 0)
         {
             processes.Last().WaitForExit();
         }
 
-        // Assassination: Kill any infinite processes (like tail -f) still hanging around
+        // Cleanup infinite processes
         foreach (var p in processes)
         {
             if (!p.HasExited) try { p.Kill(); } catch { }
@@ -605,8 +627,9 @@ class Program
 
     private static bool IsBuiltin(string command)
     {
-        string cmd = command.Split(' ')[0];
-        return new[] { "echo", "exit", "type", "pwd", "cd" }.Contains(cmd);
+        string cmdName = command.Split(' ')[0];
+        string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
+        return builtins.Contains(cmdName);
     }
 
     private static (string prog, string args) ParseCommand(string cmd)
