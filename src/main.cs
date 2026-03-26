@@ -5,6 +5,8 @@ using System;
 
 class Program
 {
+
+    private static List<string> commandHistory = new List<string>();
     static void Main()
     {
         while (true)
@@ -13,6 +15,8 @@ class Program
             string command = ReadCommand();
 
             if (string.IsNullOrWhiteSpace(command)) continue;
+
+            commandHistory.Add(command);
 
             // 1. HIGHEST PRIORITY: Pipelines
             // We check this first because a pipeline might contain built-ins or redirection
@@ -151,14 +155,26 @@ class Program
             return ""; // Success, but no output string to pipe
         }
 
+        if (command == "history")
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < commandHistory.Count; i++)
+            {
+                // The format is: 5 spaces, the index (starting at 1), 2 spaces, the command
+                // You can use string interpolation to make it look pretty
+                sb.AppendLine($"  {i + 1}  {commandHistory[i]}");
+            }
+            return sb.ToString();
+        }
+
         if (command.StartsWith("type "))
         {
             string target = command.Substring(5).Trim();
-            string[] builtins = { "type", "exit", "echo", "pwd", "cd" };
+            // REMEMBER TO ADD "history" TO THIS LIST
+            string[] builtins = { "type", "exit", "echo", "pwd", "cd", "history" };
             if (builtins.Contains(target)) return $"{target} is a shell builtin\n";
 
-            if (FileExistsAndExecutable(target, out string path)) return $"{target} is {path}\n";
-            return $"{target}: not found\n";
+            // ... rest of type logic ...
         }
 
         return null; // Not a builtin
@@ -202,82 +218,85 @@ class Program
             Console.WriteLine($"{command}: command not found");
         }
     }
-    private static void RunExternalPipeline(string leftCommand, string rightCommand)
-    {
-        // 1. Parse Left Command
-        string[] leftParts = leftCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string leftProgram = leftParts[0];
-        string leftArgs = leftParts.Length > 1 ? string.Join(" ", leftParts[1..]) : "";
 
-        // 2. Parse Right Command
-        string[] rightParts = rightCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string rightProgram = rightParts[0];
-        string rightArgs = rightParts.Length > 1 ? string.Join(" ", rightParts[1..]) : "";
+    #region Old Code Before Refactoring
 
-        if (!FileExistsAndExecutable(leftProgram) || !FileExistsAndExecutable(rightProgram))
-        {
-            Console.WriteLine("Command not found in pipeline");
-            return;
-        }
+    // private static void RunExternalPipeline(string leftCommand, string rightCommand)
+    // {
+    //     // 1. Parse Left Command
+    //     string[] leftParts = leftCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    //     string leftProgram = leftParts[0];
+    //     string leftArgs = leftParts.Length > 1 ? string.Join(" ", leftParts[1..]) : "";
 
-        // 4. Set up Left Process (The Talker)
-        Process leftProcess = new Process();
-        leftProcess.StartInfo.FileName = leftProgram;
-        leftProcess.StartInfo.Arguments = leftArgs;
-        leftProcess.StartInfo.UseShellExecute = false;
-        leftProcess.StartInfo.RedirectStandardOutput = true; // We MUST redirect this to grab it
+    //     // 2. Parse Right Command
+    //     string[] rightParts = rightCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    //     string rightProgram = rightParts[0];
+    //     string rightArgs = rightParts.Length > 1 ? string.Join(" ", rightParts[1..]) : "";
 
-        // 5. Set up Right Process (The Listener)
-        Process rightProcess = new Process();
-        rightProcess.StartInfo.FileName = rightProgram;
-        rightProcess.StartInfo.Arguments = rightArgs;
-        rightProcess.StartInfo.UseShellExecute = false;
-        rightProcess.StartInfo.RedirectStandardInput = true;  // We MUST redirect this to feed it
+    //     if (!FileExistsAndExecutable(leftProgram) || !FileExistsAndExecutable(rightProgram))
+    //     {
+    //         Console.WriteLine("Command not found in pipeline");
+    //         return;
+    //     }
 
-        // UPGRADE 1: Let the Right program talk directly to the screen! (No ReadToEnd needed)
-        rightProcess.StartInfo.RedirectStandardOutput = false;
+    //     // 4. Set up Left Process (The Talker)
+    //     Process leftProcess = new Process();
+    //     leftProcess.StartInfo.FileName = leftProgram;
+    //     leftProcess.StartInfo.Arguments = leftArgs;
+    //     leftProcess.StartInfo.UseShellExecute = false;
+    //     leftProcess.StartInfo.RedirectStandardOutput = true; // We MUST redirect this to grab it
 
-        // 6. Start them both simultaneously
-        leftProcess.Start();
-        rightProcess.Start();
+    //     // 5. Set up Right Process (The Listener)
+    //     Process rightProcess = new Process();
+    //     rightProcess.StartInfo.FileName = rightProgram;
+    //     rightProcess.StartInfo.Arguments = rightArgs;
+    //     rightProcess.StartInfo.UseShellExecute = false;
+    //     rightProcess.StartInfo.RedirectStandardInput = true;  // We MUST redirect this to feed it
 
-        // 7. The Active Bucket Brigade
-        Task.Run(() =>
-        {
-            try
-            {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
+    //     // UPGRADE 1: Let the Right program talk directly to the screen! (No ReadToEnd needed)
+    //     rightProcess.StartInfo.RedirectStandardOutput = false;
 
-                // UPGRADE 2: Read chunks as they arrive, even if the bucket isn't full
-                while ((bytesRead = leftProcess.StandardOutput.BaseStream.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    rightProcess.StandardInput.BaseStream.Write(buffer, 0, bytesRead);
+    //     // 6. Start them both simultaneously
+    //     leftProcess.Start();
+    //     rightProcess.Start();
 
-                    // CRITICAL: Shove the data down the pipe immediately so 'head' gets it!
-                    rightProcess.StandardInput.BaseStream.Flush();
-                }
-            }
-            catch
-            {
-                // Catches the Broken Pipe if the Right process exits early
-            }
-            finally
-            {
-                rightProcess.StandardInput.Close(); // Slam the door shut
-            }
-        });
+    //     // 7. The Active Bucket Brigade
+    //     Task.Run(() =>
+    //     {
+    //         try
+    //         {
+    //             byte[] buffer = new byte[4096];
+    //             int bytesRead;
 
-        // 8. Wait for the Right process to officially finish 
-        // (It will exit natively once it hits its 5-line limit)
-        rightProcess.WaitForExit();
+    //             // UPGRADE 2: Read chunks as they arrive, even if the bucket isn't full
+    //             while ((bytesRead = leftProcess.StandardOutput.BaseStream.Read(buffer, 0, buffer.Length)) > 0)
+    //             {
+    //                 rightProcess.StandardInput.BaseStream.Write(buffer, 0, bytesRead);
 
-        // 9. The Assassination
-        if (!leftProcess.HasExited)
-        {
-            try { leftProcess.Kill(); } catch { } // Safely kill the infinite tail
-        }
-    }
+    //                 // CRITICAL: Shove the data down the pipe immediately so 'head' gets it!
+    //                 rightProcess.StandardInput.BaseStream.Flush();
+    //             }
+    //         }
+    //         catch
+    //         {
+    //             // Catches the Broken Pipe if the Right process exits early
+    //         }
+    //         finally
+    //         {
+    //             rightProcess.StandardInput.Close(); // Slam the door shut
+    //         }
+    //     });
+
+    //     // 8. Wait for the Right process to officially finish 
+    //     // (It will exit natively once it hits its 5-line limit)
+    //     rightProcess.WaitForExit();
+
+    //     // 9. The Assassination
+    //     if (!leftProcess.HasExited)
+    //     {
+    //         try { leftProcess.Kill(); } catch { } // Safely kill the infinite tail
+    //     }
+    // }
 
     // private static void ExecutePipeline(string leftCommand, string rightCommand)
     // {
@@ -323,6 +342,8 @@ class Program
     //     }
     // }
 
+    #endregion
+
     private static void ExecuteMultiStagePipeline(string[] stages)
     {
         List<Process> processes = new List<Process>();
@@ -351,39 +372,19 @@ class Program
             else
             {
                 var (prog, args) = ParseCommand(currentStage);
-                Process proc = new Process();
-                proc.StartInfo.FileName = prog;
-                proc.StartInfo.Arguments = args;
-                proc.StartInfo.UseShellExecute = false;
 
-                // Redirect Input if there's a previous stage
-                if (previousOutput != null || i > 0) proc.StartInfo.RedirectStandardInput = true;
+                // 1. Determine the "Hoses" (Redirection)
+                bool redirectIn = (previousOutput != null || i > 0);
+                bool redirectOut = (i < stages.Length - 1);
 
-                // Redirect Output if we aren't the last stage
-                if (i < stages.Length - 1) proc.StartInfo.RedirectStandardOutput = true;
+                Process proc = StartProcess(prog, args, redirectIn, redirectOut);
 
-                proc.Start();
                 processes.Add(proc);
 
                 // Stream data from previous stage into this one
                 if (previousOutput != null)
                 {
-                    Stream currentIn = proc.StandardInput.BaseStream;
-                    Stream source = previousOutput;
-
-                    Task.Run(() =>
-                    {
-                        try
-                        {
-                            source.CopyTo(currentIn);
-                            currentIn.Flush();
-                        }
-                        catch { }
-                        finally
-                        {
-                            currentIn.Close();
-                        }
-                    });
+                    LinkStages(previousOutput, proc.StandardInput.BaseStream);
                 }
 
                 // Prepare the hose for the next iteration
@@ -628,7 +629,7 @@ class Program
     private static bool IsBuiltin(string command)
     {
         string cmdName = command.Split(' ')[0];
-        string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
+        string[] builtins = { "echo", "exit", "type", "pwd", "cd", "history" };
         return builtins.Contains(cmdName);
     }
 
@@ -649,5 +650,30 @@ class Program
         p.Start();
         return p;
     }
+
+    private static void LinkStages(Stream source, Stream destination)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                // The actual "pouring" of the data bucket
+                source.CopyTo(destination);
+                destination.Flush();
+            }
+            catch (Exception)
+            {
+                // Broken pipes are normal when the receiver (like 'head') quits early
+            }
+            finally
+            {
+                // CRITICAL: Always close the destination so the next program 
+                // knows no more data is coming.
+                destination.Close();
+            }
+        });
+    }
+
+
 
 }
