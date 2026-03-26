@@ -249,28 +249,47 @@ class Program
                     // ==========================================
                     // BRANCH 1: FILENAME COMPLETION (Arguments)
                     // ==========================================
-                    string prefix = current.Substring(lastSpaceIndex + 1);
-                    string currentDir = Directory.GetCurrentDirectory();
+                    string fullArg = current.Substring(lastSpaceIndex + 1);
+
+                    string searchDir = "";
+                    string filePrefix = fullArg;
+
+                    // Check if they are typing a nested path
+                    int lastSlashIndex = fullArg.LastIndexOf('/');
+                    if (lastSlashIndex >= 0)
+                    {
+                        // Split it! e.g., "path/to/" and "f"
+                        searchDir = fullArg.Substring(0, lastSlashIndex + 1);
+                        filePrefix = fullArg.Substring(lastSlashIndex + 1);
+                    }
+
+                    // Path.Combine is magic. If searchDir is empty, it just uses the current directory!
+                    string targetDir = Path.Combine(Directory.GetCurrentDirectory(), searchDir);
 
                     var fileMatches = new List<string>();
-                    try
+
+                    if (Directory.Exists(targetDir))
                     {
-                        var files = Directory.GetFiles(currentDir);
-                        foreach (var file in files)
+                        try
                         {
-                            string fileName = Path.GetFileName(file);
-                            if (fileName.StartsWith(prefix))
+                            var files = Directory.GetFiles(targetDir);
+                            foreach (var file in files)
                             {
-                                fileMatches.Add(fileName);
+                                string fileName = Path.GetFileName(file);
+                                if (fileName.StartsWith(filePrefix))
+                                {
+                                    fileMatches.Add(fileName);
+                                }
                             }
                         }
+                        catch { /* Safely ignore inaccessible directories */ }
                     }
-                    catch { /* Safely ignore inaccessible directories */ }
 
                     if (fileMatches.Count == 1)
                     {
                         string match = fileMatches[0];
-                        string remainder = match.Substring(prefix.Length) + " ";
+                        // We only append the missing letters of the filename itself!
+                        string remainder = match.Substring(filePrefix.Length) + " ";
 
                         sb.Append(remainder);
                         Console.Write(remainder);
@@ -278,7 +297,7 @@ class Program
                     }
                     else
                     {
-                        // If 0 matches or multiple matches for files (for this stage)
+                        // If 0 matches or multiple matches for files
                         Console.Write("\a");
                         previousKeyWasTab = false;
                     }
