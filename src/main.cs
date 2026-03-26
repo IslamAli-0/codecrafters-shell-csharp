@@ -287,7 +287,6 @@ class Program
                         string match = fileMatches[0];
                         string remainder = match.Substring(filePrefix.Length);
 
-                        // UPGRADE 2: Check if the match is a directory to decide the trailing character
                         string fullMatchPath = Path.Combine(targetDir, match);
                         if (Directory.Exists(fullMatchPath))
                         {
@@ -302,8 +301,46 @@ class Program
                         Console.Write(remainder);
                         previousKeyWasTab = false;
                     }
+                    else if (fileMatches.Count > 1)
+                    {
+                        if (!previousKeyWasTab)
+                        {
+                            // FIRST TAB: Ring the bell and remember it
+                            Console.Write("\a");
+                            previousKeyWasTab = true;
+                        }
+                        else
+                        {
+                            // SECOND TAB: Print the list!
+                            Console.WriteLine();
+                            fileMatches.Sort();
+
+                            // Format matches for display (add trailing slashes to directories)
+                            var displayMatches = new List<string>();
+                            foreach (var match in fileMatches)
+                            {
+                                string fullMatchPath = Path.Combine(targetDir, match);
+                                if (Directory.Exists(fullMatchPath))
+                                {
+                                    displayMatches.Add(match + "/");
+                                }
+                                else
+                                {
+                                    displayMatches.Add(match);
+                                }
+                            }
+
+                            // Print them separated by exactly two spaces
+                            Console.WriteLine(string.Join("  ", displayMatches));
+
+                            // Reprint the prompt and whatever they were typing
+                            Console.Write("$ " + current);
+                            previousKeyWasTab = false;
+                        }
+                    }
                     else
                     {
+                        // 0 matches
                         Console.Write("\a");
                         previousKeyWasTab = false;
                     }
