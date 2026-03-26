@@ -155,13 +155,26 @@ class Program
             return ""; // Success, but no output string to pipe
         }
 
-        if (command == "history")
+        if (command.StartsWith("history"))
         {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < commandHistory.Count; i++)
+            string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            int countToShow = commandHistory.Count; // Default: show everything
+
+            // Check if the user provided a number: "history 5"
+            if (parts.Length > 1 && int.TryParse(parts[1], out int n))
             {
-                // The format is: 5 spaces, the index (starting at 1), 2 spaces, the command
-                // You can use string interpolation to make it look pretty
+                countToShow = n;
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            // Calculate where to start. 
+            // Example: 10 items total, show last 3 -> start at index 7.
+            int startIndex = Math.Max(0, commandHistory.Count - countToShow);
+
+            for (int i = startIndex; i < commandHistory.Count; i++)
+            {
+                // The display index is always i + 1
                 sb.AppendLine($"  {i + 1}  {commandHistory[i]}");
             }
             return sb.ToString();
