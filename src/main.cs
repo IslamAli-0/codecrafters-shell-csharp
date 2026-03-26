@@ -218,7 +218,6 @@ class Program
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
         string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
 
-        // NEW: Our short-term memory flag
         bool previousKeyWasTab = false;
 
         while (true)
@@ -228,6 +227,7 @@ class Program
             if (keyInfo.Key == ConsoleKey.Enter)
             {
                 Console.WriteLine();
+                previousKeyWasTab = false;
                 return sb.ToString();
             }
             else if (keyInfo.Key == ConsoleKey.Backspace)
@@ -237,104 +237,134 @@ class Program
                     sb.Length--;
                     Console.Write("\b \b");
                 }
+                previousKeyWasTab = false;
             }
             else if (keyInfo.Key == ConsoleKey.Tab)
             {
                 string current = sb.ToString();
+                int lastSpaceIndex = current.LastIndexOf(' ');
 
-                // 1. Get built-in matches
-                var matches = builtins.Where(b => b.StartsWith(current)).ToList();
-
-                // 2. Get PATH executable matches
-                string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                string[] paths = pathEnv.Split(Path.PathSeparator);
-
-                foreach (string dir in paths)
+                if (lastSpaceIndex >= 0)
                 {
-                    if (Directory.Exists(dir))
+                    // ==========================================
+                    // BRANCH 1: FILENAME COMPLETION (Arguments)
+                    // ==========================================
+                    string prefix = current.Substring(lastSpaceIndex + 1);
+                    string currentDir = Directory.GetCurrentDirectory();
+
+                    var fileMatches = new List<string>();
+                    try
                     {
-                        try
+                        var files = Directory.GetFiles(currentDir);
+                        foreach (var file in files)
                         {
-                            // Grab all files in this directory
-                            var filesInDir = Directory.GetFiles(dir);
-
-                            foreach (string file in filesInDir)
+                            string fileName = Path.GetFileName(file);
+                            if (fileName.StartsWith(prefix))
                             {
-                                // Extract just the name (e.g., "custom_executable")
-                                string fileName = Path.GetFileName(file);
-
-                                // If it matches what the user typed, add it to our list
-                                if (fileName.StartsWith(current))
-                                {
-                                    matches.Add(fileName);
-                                }
+                                fileMatches.Add(fileName);
                             }
                         }
-                        catch
-                        {
-                            // If we don't have permission to read a specific folder, safely ignore it
-                        }
                     }
-                }
+                    catch { /* Safely ignore inaccessible directories */ }
 
-                // 3. Remove duplicates (in case the same program exists in multiple folders)
-                matches = matches.Distinct().ToList();
-
-                // 4. Handle the autocomplete
-                if (matches.Count == 1)
-                {
-                    string match = matches[0];
-                    string remainder = match.Substring(current.Length) + " "; // Trailing space ONLY for 1 match
-
-                    sb.Append(remainder);
-                    Console.Write(remainder);
-
-                    previousKeyWasTab = false;
-                }
-                else if (matches.Count > 1)
-                {
-                    // NEW: Find the Longest Common Prefix
-                    string lcp = GetLongestCommonPrefix(matches);
-
-                    if (lcp.Length > current.Length)
+                    if (fileMatches.Count == 1)
                     {
-                        // We can autocomplete a partial chunk!
-                        string remainder = lcp.Substring(current.Length); // NO trailing space here!
+                        string match = fileMatches[0];
+                        string remainder = match.Substring(prefix.Length) + " ";
 
                         sb.Append(remainder);
                         Console.Write(remainder);
-
-                        // Reset memory because we made progress for the user
                         previousKeyWasTab = false;
                     }
                     else
                     {
-                        // We can't autocomplete any further. Do the standard double-tab logic.
-                        if (!previousKeyWasTab)
-                        {
-                            Console.Write("\a");
-                            previousKeyWasTab = true;
-                        }
-                        else
-                        {
-                            Console.WriteLine();
-                            matches.Sort();
-                            Console.WriteLine(string.Join("  ", matches));
-                            Console.Write("$ " + current);
-                            previousKeyWasTab = false;
-                        }
+                        // If 0 matches or multiple matches for files (for this stage)
+                        Console.Write("\a");
+                        previousKeyWasTab = false;
                     }
                 }
                 else
                 {
-                    Console.Write("\a");
-                    previousKeyWasTab = false;
+                    // ==========================================
+                    // BRANCH 2: COMMAND COMPLETION (Executables)
+                    // ==========================================
+                    var matches = builtins.Where(b => b.StartsWith(current)).ToList();
+
+                    string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                    string[] paths = pathEnv.Split(Path.PathSeparator);
+
+                    foreach (string dir in paths)
+                    {
+                        if (Directory.Exists(dir))
+                        {
+                            try
+                            {
+                                var filesInDir = Directory.GetFiles(dir);
+                                foreach (string file in filesInDir)
+                                {
+                                    string fileName = Path.GetFileName(file);
+                                    if (fileName.StartsWith(current))
+                                    {
+                                        matches.Add(fileName);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+
+                    matches = matches.Distinct().ToList();
+
+                    if (matches.Count == 1)
+                    {
+                        string match = matches[0];
+                        string remainder = match.Substring(current.Length) + " ";
+
+                        sb.Append(remainder);
+                        Console.Write(remainder);
+                        previousKeyWasTab = false;
+                    }
+                    else if (matches.Count > 1)
+                    {
+                        string lcp = GetLongestCommonPrefix(matches);
+
+                        if (lcp.Length > current.Length)
+                        {
+                            string remainder = lcp.Substring(current.Length);
+                            sb.Append(remainder);
+                            Console.Write(remainder);
+                            previousKeyWasTab = false;
+                        }
+                        else
+                        {
+                            if (!previousKeyWasTab)
+                            {
+                                Console.Write("\a");
+                                previousKeyWasTab = true;
+                            }
+                            else
+                            {
+                                Console.WriteLine();
+                                matches.Sort();
+                                Console.WriteLine(string.Join("  ", matches));
+                                Console.Write("$ " + current);
+                                previousKeyWasTab = false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Console.Write("\a");
+                        previousKeyWasTab = false;
+                    }
                 }
             }
             else
             {
+                // Normal typing
                 sb.Append(keyInfo.KeyChar);
                 Console.Write(keyInfo.KeyChar);
+                previousKeyWasTab = false;
             }
         }
     }
