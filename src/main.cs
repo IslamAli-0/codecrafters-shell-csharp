@@ -216,8 +216,6 @@ class Program
     private static string ReadCommand()
     {
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
-
         bool previousKeyWasTab = false;
 
         while (true)
@@ -227,7 +225,6 @@ class Program
             if (keyInfo.Key == ConsoleKey.Enter)
             {
                 Console.WriteLine();
-                previousKeyWasTab = false;
                 return sb.ToString();
             }
             else if (keyInfo.Key == ConsoleKey.Backspace)
@@ -244,187 +241,14 @@ class Program
                 string current = sb.ToString();
                 int lastSpaceIndex = current.LastIndexOf(' ');
 
+                // Delegate the heavy lifting to our new helper methods!
                 if (lastSpaceIndex >= 0)
                 {
-                    // ==========================================
-                    // BRANCH 1: FILENAME COMPLETION (Arguments)
-                    // ==========================================
-                    string fullArg = current.Substring(lastSpaceIndex + 1);
-
-                    string searchDir = "";
-                    string filePrefix = fullArg;
-
-                    int lastSlashIndex = fullArg.LastIndexOf('/');
-                    if (lastSlashIndex >= 0)
-                    {
-                        searchDir = fullArg.Substring(0, lastSlashIndex + 1);
-                        filePrefix = fullArg.Substring(lastSlashIndex + 1);
-                    }
-
-                    string targetDir = Path.Combine(Directory.GetCurrentDirectory(), searchDir);
-                    var fileMatches = new List<string>();
-
-                    if (Directory.Exists(targetDir))
-                    {
-                        try
-                        {
-                            var entries = Directory.GetFileSystemEntries(targetDir);
-                            foreach (var entry in entries)
-                            {
-                                string entryName = Path.GetFileName(entry);
-                                if (entryName.StartsWith(filePrefix))
-                                {
-                                    fileMatches.Add(entryName);
-                                }
-                            }
-                        }
-                        catch { /* Safely ignore inaccessible directories */ }
-                    }
-
-                    if (fileMatches.Count == 1)
-                    {
-                        string match = fileMatches[0];
-                        string remainder = match.Substring(filePrefix.Length);
-
-                        string fullMatchPath = Path.Combine(targetDir, match);
-                        if (Directory.Exists(fullMatchPath))
-                        {
-                            remainder += "/"; // Directory gets a slash
-                        }
-                        else
-                        {
-                            remainder += " "; // File gets a space
-                        }
-
-                        sb.Append(remainder);
-                        Console.Write(remainder);
-                        previousKeyWasTab = false;
-                    }
-                    else if (fileMatches.Count > 1)
-                    {
-                        // LCP LOGIC FOR FILES!
-                        string lcp = GetLongestCommonPrefix(fileMatches);
-
-                        if (lcp.Length > filePrefix.Length)
-                        {
-                            string remainder = lcp.Substring(filePrefix.Length);
-
-                            sb.Append(remainder);
-                            Console.Write(remainder);
-                            previousKeyWasTab = false;
-                        }
-                        else
-                        {
-                            if (!previousKeyWasTab)
-                            {
-                                Console.Write("\a");
-                                previousKeyWasTab = true;
-                            }
-                            else
-                            {
-                                Console.WriteLine();
-                                fileMatches.Sort();
-
-                                var displayMatches = new List<string>();
-                                foreach (var match in fileMatches)
-                                {
-                                    string fullMatchPath = Path.Combine(targetDir, match);
-                                    if (Directory.Exists(fullMatchPath))
-                                    {
-                                        displayMatches.Add(match + "/");
-                                    }
-                                    else
-                                    {
-                                        displayMatches.Add(match);
-                                    }
-                                }
-
-                                Console.WriteLine(string.Join("  ", displayMatches));
-                                Console.Write("$ " + current);
-                                previousKeyWasTab = false;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Console.Write("\a");
-                        previousKeyWasTab = false;
-                    }
+                    HandleArgumentCompletion(current, lastSpaceIndex, sb, ref previousKeyWasTab);
                 }
                 else
                 {
-                    // ==========================================
-                    // BRANCH 2: COMMAND COMPLETION (Executables)
-                    // ==========================================
-                    var matches = builtins.Where(b => b.StartsWith(current)).ToList();
-
-                    string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                    string[] paths = pathEnv.Split(Path.PathSeparator);
-
-                    foreach (string dir in paths)
-                    {
-                        if (Directory.Exists(dir))
-                        {
-                            try
-                            {
-                                var filesInDir = Directory.GetFiles(dir);
-                                foreach (string file in filesInDir)
-                                {
-                                    string fileName = Path.GetFileName(file);
-                                    if (fileName.StartsWith(current))
-                                    {
-                                        matches.Add(fileName);
-                                    }
-                                }
-                            }
-                            catch { }
-                        }
-                    }
-
-                    matches = matches.Distinct().ToList();
-
-                    if (matches.Count == 1)
-                    {
-                        string match = matches[0];
-                        string remainder = match.Substring(current.Length) + " ";
-
-                        sb.Append(remainder);
-                        Console.Write(remainder);
-                        previousKeyWasTab = false;
-                    }
-                    else if (matches.Count > 1)
-                    {
-                        string lcp = GetLongestCommonPrefix(matches);
-
-                        if (lcp.Length > current.Length)
-                        {
-                            string remainder = lcp.Substring(current.Length);
-                            sb.Append(remainder);
-                            Console.Write(remainder);
-                            previousKeyWasTab = false;
-                        }
-                        else
-                        {
-                            if (!previousKeyWasTab)
-                            {
-                                Console.Write("\a");
-                                previousKeyWasTab = true;
-                            }
-                            else
-                            {
-                                Console.WriteLine();
-                                matches.Sort();
-                                Console.WriteLine(string.Join("  ", matches));
-                                Console.Write("$ " + current);
-                                previousKeyWasTab = false;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Console.Write("\a");
-                        previousKeyWasTab = false;
-                    }
+                    HandleCommandCompletion(current, sb, ref previousKeyWasTab);
                 }
             }
             else
@@ -434,6 +258,159 @@ class Program
                 Console.Write(keyInfo.KeyChar);
                 previousKeyWasTab = false;
             }
+        }
+    }
+    private static void HandleCommandCompletion(string current, System.Text.StringBuilder sb, ref bool previousKeyWasTab)
+    {
+        string[] builtins = { "echo", "exit", "type", "pwd", "cd" };
+        var matches = builtins.Where(b => b.StartsWith(current)).ToList();
+
+        string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        string[] paths = pathEnv.Split(Path.PathSeparator);
+
+        foreach (string dir in paths)
+        {
+            if (Directory.Exists(dir))
+            {
+                try
+                {
+                    var filesInDir = Directory.GetFiles(dir);
+                    foreach (string file in filesInDir)
+                    {
+                        string fileName = Path.GetFileName(file);
+                        if (fileName.StartsWith(current)) matches.Add(fileName);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        matches = matches.Distinct().ToList();
+
+        if (matches.Count == 1)
+        {
+            string match = matches[0];
+            string remainder = match.Substring(current.Length) + " ";
+            sb.Append(remainder);
+            Console.Write(remainder);
+            previousKeyWasTab = false;
+        }
+        else if (matches.Count > 1)
+        {
+            string lcp = GetLongestCommonPrefix(matches);
+
+            if (lcp.Length > current.Length)
+            {
+                string remainder = lcp.Substring(current.Length);
+                sb.Append(remainder);
+                Console.Write(remainder);
+                previousKeyWasTab = false;
+            }
+            else
+            {
+                if (!previousKeyWasTab)
+                {
+                    Console.Write("\a");
+                    previousKeyWasTab = true;
+                }
+                else
+                {
+                    Console.WriteLine();
+                    matches.Sort();
+                    Console.WriteLine(string.Join("  ", matches));
+                    Console.Write("$ " + current);
+                    previousKeyWasTab = false;
+                }
+            }
+        }
+        else
+        {
+            Console.Write("\a");
+            previousKeyWasTab = false;
+        }
+    }
+    private static void HandleArgumentCompletion(string current, int lastSpaceIndex, System.Text.StringBuilder sb, ref bool previousKeyWasTab)
+    {
+        string fullArg = current.Substring(lastSpaceIndex + 1);
+        string searchDir = "";
+        string filePrefix = fullArg;
+
+        int lastSlashIndex = fullArg.LastIndexOf('/');
+        if (lastSlashIndex >= 0)
+        {
+            searchDir = fullArg.Substring(0, lastSlashIndex + 1);
+            filePrefix = fullArg.Substring(lastSlashIndex + 1);
+        }
+
+        string targetDir = Path.Combine(Directory.GetCurrentDirectory(), searchDir);
+        var fileMatches = new List<string>();
+
+        if (Directory.Exists(targetDir))
+        {
+            try
+            {
+                var entries = Directory.GetFileSystemEntries(targetDir);
+                foreach (var entry in entries)
+                {
+                    string entryName = Path.GetFileName(entry);
+                    if (entryName.StartsWith(filePrefix)) fileMatches.Add(entryName);
+                }
+            }
+            catch { }
+        }
+
+        if (fileMatches.Count == 1)
+        {
+            string match = fileMatches[0];
+            string remainder = match.Substring(filePrefix.Length);
+
+            string fullMatchPath = Path.Combine(targetDir, match);
+            remainder += Directory.Exists(fullMatchPath) ? "/" : " ";
+
+            sb.Append(remainder);
+            Console.Write(remainder);
+            previousKeyWasTab = false;
+        }
+        else if (fileMatches.Count > 1)
+        {
+            string lcp = GetLongestCommonPrefix(fileMatches);
+
+            if (lcp.Length > filePrefix.Length)
+            {
+                string remainder = lcp.Substring(filePrefix.Length);
+                sb.Append(remainder);
+                Console.Write(remainder);
+                previousKeyWasTab = false;
+            }
+            else
+            {
+                if (!previousKeyWasTab)
+                {
+                    Console.Write("\a");
+                    previousKeyWasTab = true;
+                }
+                else
+                {
+                    Console.WriteLine();
+                    fileMatches.Sort();
+
+                    var displayMatches = new List<string>();
+                    foreach (var match in fileMatches)
+                    {
+                        string fullMatchPath = Path.Combine(targetDir, match);
+                        displayMatches.Add(Directory.Exists(fullMatchPath) ? match + "/" : match);
+                    }
+
+                    Console.WriteLine(string.Join("  ", displayMatches));
+                    Console.Write("$ " + current);
+                    previousKeyWasTab = false;
+                }
+            }
+        }
+        else
+        {
+            Console.Write("\a");
+            previousKeyWasTab = false;
         }
     }
 
