@@ -386,51 +386,29 @@ class Program
                         Console.Write(remainder);
                         previousKeyWasTab = false;
                     }
-                    else if (fileMatches.Count > 1)
+                    else if (matches.Count > 1)
                     {
-                        // NEW: Find the Longest Common Prefix for files/directories
-                        string lcp = GetLongestCommonPrefix(fileMatches);
+                        string lcp = GetLongestCommonPrefix(matches);
 
-                        // Compare against filePrefix, NOT current, because we only care about the filename part!
-                        if (lcp.Length > filePrefix.Length)
+                        if (lcp.Length > current.Length)
                         {
-                            // Autocomplete the partial chunk
-                            string remainder = lcp.Substring(filePrefix.Length);
-
+                            string remainder = lcp.Substring(current.Length);
                             sb.Append(remainder);
                             Console.Write(remainder);
                             previousKeyWasTab = false;
                         }
                         else
                         {
-                            // We can't autocomplete further. Do the double-tab list logic!
                             if (!previousKeyWasTab)
                             {
-                                // FIRST TAB: Ring the bell and remember it
                                 Console.Write("\a");
                                 previousKeyWasTab = true;
                             }
                             else
                             {
-                                // SECOND TAB: Print the formatted list!
                                 Console.WriteLine();
-                                fileMatches.Sort();
-
-                                var displayMatches = new List<string>();
-                                foreach (var match in fileMatches)
-                                {
-                                    string fullMatchPath = Path.Combine(targetDir, match);
-                                    if (Directory.Exists(fullMatchPath))
-                                    {
-                                        displayMatches.Add(match + "/");
-                                    }
-                                    else
-                                    {
-                                        displayMatches.Add(match);
-                                    }
-                                }
-
-                                Console.WriteLine(string.Join("  ", displayMatches));
+                                matches.Sort();
+                                Console.WriteLine(string.Join("  ", matches));
                                 Console.Write("$ " + current);
                                 previousKeyWasTab = false;
                             }
