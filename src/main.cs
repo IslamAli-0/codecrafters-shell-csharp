@@ -159,31 +159,34 @@ class Program
         {
             string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            // --- NEW: Handle 'history -r <file>' ---
+            // --- Handle 'history -r <file>' (Read) ---
             if (parts.Length >= 3 && parts[1] == "-r")
             {
                 string filePath = parts[2];
-
                 if (File.Exists(filePath))
                 {
-                    // Read all lines from the file
                     string[] lines = File.ReadAllLines(filePath);
                     foreach (string line in lines)
                     {
-                        // We must ignore blank lines!
-                        if (!string.IsNullOrWhiteSpace(line))
-                        {
-                            commandHistory.Add(line);
-                        }
+                        if (!string.IsNullOrWhiteSpace(line)) commandHistory.Add(line);
                     }
                 }
-
-                // Return an empty string so the shell knows it succeeded 
-                // but has nothing to print to the screen (just like 'cd')
-                return "";
+                return ""; // Silent success
             }
 
-            // --- EXISTING: Handle 'history <n>' or just 'history' ---
+            // --- Handle 'history -w <file>' (Write) ---
+            else if (parts.Length >= 3 && parts[1] == "-w")
+            {
+                string filePath = parts[2];
+
+                // This single method creates the file, writes the list, 
+                // and adds the trailing newline automatically!
+                File.WriteAllLines(filePath, commandHistory);
+
+                return ""; // Silent success
+            }
+
+            // --- Handle 'history <n>' or just 'history' (Display) ---
             int countToShow = commandHistory.Count;
 
             if (parts.Length > 1 && int.TryParse(parts[1], out int n))
