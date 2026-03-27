@@ -158,23 +158,44 @@ class Program
         if (command.StartsWith("history"))
         {
             string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            int countToShow = commandHistory.Count; // Default: show everything
 
-            // Check if the user provided a number: "history 5"
+            // --- NEW: Handle 'history -r <file>' ---
+            if (parts.Length >= 3 && parts[1] == "-r")
+            {
+                string filePath = parts[2];
+
+                if (File.Exists(filePath))
+                {
+                    // Read all lines from the file
+                    string[] lines = File.ReadAllLines(filePath);
+                    foreach (string line in lines)
+                    {
+                        // We must ignore blank lines!
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            commandHistory.Add(line);
+                        }
+                    }
+                }
+
+                // Return an empty string so the shell knows it succeeded 
+                // but has nothing to print to the screen (just like 'cd')
+                return "";
+            }
+
+            // --- EXISTING: Handle 'history <n>' or just 'history' ---
+            int countToShow = commandHistory.Count;
+
             if (parts.Length > 1 && int.TryParse(parts[1], out int n))
             {
                 countToShow = n;
             }
 
             StringBuilder sb = new StringBuilder();
-
-            // Calculate where to start. 
-            // Example: 10 items total, show last 3 -> start at index 7.
             int startIndex = Math.Max(0, commandHistory.Count - countToShow);
 
             for (int i = startIndex; i < commandHistory.Count; i++)
             {
-                // The display index is always i + 1
                 sb.AppendLine($"  {i + 1}  {commandHistory[i]}");
             }
             return sb.ToString();
