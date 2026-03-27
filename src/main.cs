@@ -7,6 +7,8 @@ class Program
 {
 
     private static List<string> commandHistory = new List<string>();
+
+    private static int lastSavedHistoryIndex = 0;
     static void Main()
     {
         while (true)
@@ -159,7 +161,7 @@ class Program
         {
             string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            // --- Handle 'history -r <file>' (Read) ---
+            // --- Handle 'history -r <file>' (Read / Load) ---
             if (parts.Length >= 3 && parts[1] == "-r")
             {
                 string filePath = parts[2];
@@ -171,24 +173,41 @@ class Program
                         if (!string.IsNullOrWhiteSpace(line)) commandHistory.Add(line);
                     }
                 }
-                return ""; // Silent success
+                // Move the bookmark so we don't accidentally append loaded commands later
+                lastSavedHistoryIndex = commandHistory.Count;
+                return "";
             }
 
-            // --- Handle 'history -w <file>' (Write) ---
+            // --- Handle 'history -w <file>' (Write All) ---
             else if (parts.Length >= 3 && parts[1] == "-w")
             {
                 string filePath = parts[2];
-
-                // This single method creates the file, writes the list, 
-                // and adds the trailing newline automatically!
                 File.WriteAllLines(filePath, commandHistory);
+
+                // Move the bookmark to the end because we just saved everything
+                lastSavedHistoryIndex = commandHistory.Count;
+                return "";
+            }
+
+            // --- NEW: Handle 'history -a <file>' (Append New) ---
+            else if (parts.Length >= 3 && parts[1] == "-a")
+            {
+                string filePath = parts[2];
+
+                // 1. Grab only the commands that come AFTER our bookmark
+                var newCommands = commandHistory.Skip(lastSavedHistoryIndex).ToList();
+
+                // 2. Append only the new ones to the end of the file
+                File.AppendAllLines(filePath, newCommands);
+
+                // 3. Move the bookmark to the new end of the list
+                lastSavedHistoryIndex = commandHistory.Count;
 
                 return ""; // Silent success
             }
 
             // --- Handle 'history <n>' or just 'history' (Display) ---
             int countToShow = commandHistory.Count;
-
             if (parts.Length > 1 && int.TryParse(parts[1], out int n))
             {
                 countToShow = n;
