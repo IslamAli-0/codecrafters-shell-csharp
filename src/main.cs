@@ -74,8 +74,16 @@ class Program
 
             // 3. THIRD PRIORITY: Shell Built-ins
             // We check for 'exit' separately because it needs to 'break' the loop
-            if (command == "exit") break;
+            if (command == "exit")
+            {
+                if (!string.IsNullOrEmpty(histFile))
+                {
+                    var newCommands = commandHistory.Skip(lastSavedHistoryIndex).ToList();
+                    File.AppendAllLines(histFile, newCommands);
+                }
 
+                break;
+            }
             // Use the Master Function for all other built-ins
             string? builtinOutput = ExecuteBuiltin(command);
             if (builtinOutput != null)
