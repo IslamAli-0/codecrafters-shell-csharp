@@ -11,6 +11,25 @@ class Program
     private static int lastSavedHistoryIndex = 0;
     static void Main()
     {
+        // --- NEW: Load history on startup from HISTFILE ---
+        string? histFile = Environment.GetEnvironmentVariable("HISTFILE");
+
+        if (!string.IsNullOrEmpty(histFile) && File.Exists(histFile))
+        {
+            string[] lines = File.ReadAllLines(histFile);
+            foreach (string line in lines)
+            {
+                // Ignore the empty lines the tester tries to sneak in!
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    commandHistory.Add(line);
+                }
+            }
+
+            // Set our append bookmark so we don't duplicate these lines later
+            lastSavedHistoryIndex = commandHistory.Count;
+        }
+
         while (true)
         {
             Console.Write("$ ");
