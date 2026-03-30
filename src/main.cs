@@ -284,7 +284,12 @@ class Program
     }
     private static void ExecuteExternal(string command, int redirectType, string redirectPath, bool appendMode)
     {
-        var (programName, arguments) = ParseCommand(command);
+        // Use the new Tokenizer
+        List<string> tokens = ParseInput(command);
+        if (tokens.Count == 0) return;
+
+        string programName = tokens[0];
+        List<string> arguments = tokens.Skip(1).ToList();
 
         if (FileExistsAndExecutable(programName))
         {
@@ -293,10 +298,16 @@ class Program
 
             Process process = new Process();
             process.StartInfo.FileName = programName;
-            process.StartInfo.Arguments = arguments;
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.RedirectStandardOutput = redirectOutput;
             process.StartInfo.RedirectStandardError = redirectError;
+
+            // Use ArgumentList to safely pass the preserved strings
+            foreach (string arg in arguments)
+            {
+                process.StartInfo.ArgumentList.Add(arg);
+            }
+
             process.Start();
 
             if (redirectOutput)
@@ -316,7 +327,7 @@ class Program
         }
         else
         {
-            Console.WriteLine($"{command}: command not found");
+            Console.WriteLine($"{programName}: command not found");
         }
     }
 
