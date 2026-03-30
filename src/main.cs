@@ -11,7 +11,6 @@ class Program
     private static int lastSavedHistoryIndex = 0;
     static void Main()
     {
-        // --- NEW: Load history on startup from HISTFILE ---
         string? histFile = Environment.GetEnvironmentVariable("HISTFILE");
 
         if (!string.IsNullOrEmpty(histFile) && File.Exists(histFile))
@@ -19,14 +18,12 @@ class Program
             string[] lines = File.ReadAllLines(histFile);
             foreach (string line in lines)
             {
-                // Ignore the empty lines the tester tries to sneak in!
                 if (!string.IsNullOrWhiteSpace(line))
                 {
                     commandHistory.Add(line);
                 }
             }
 
-            // Set our append bookmark so we don't duplicate these lines later
             lastSavedHistoryIndex = commandHistory.Count;
         }
 
@@ -39,26 +36,21 @@ class Program
 
             commandHistory.Add(command);
 
-            // 1. HIGHEST PRIORITY: Pipelines
-            // We check this first because a pipeline might contain built-ins or redirection
-            if (command.Contains("|")) // Changed from " | " to just "|" to be safer
+            if (command.Contains("|"))
             {
-                // Split the entire thing into an array: ["cat file", " head -n 3", " wc"]
                 string[] stages = command.Split('|', StringSplitOptions.RemoveEmptyEntries);
                 for (int i = 0; i < stages.Length; i++) stages[i] = stages[i].Trim();
 
                 ExecuteMultiStagePipeline(stages);
                 continue;
             }
-            // 2. SECOND PRIORITY: Redirection Interceptor
-            // We parse this before execution so we know if we need to 'trap' the output
             string redirectPath = string.Empty;
-            int redirectType = 0; // 0 = none, 1 = stdout, 2 = stderr
+            int redirectType = 0;
             bool appendMode = false;
             int redirectIndex = -1;
             string operatorStr = "";
 
-            // Check for longest operators first to avoid partial matching (e.g., '>>' before '>')
+            // Check longest operators first to avoid partial matches.
             if (command.Contains(" 2>> ")) { redirectIndex = command.IndexOf(" 2>> "); operatorStr = " 2>> "; redirectType = 2; appendMode = true; }
             else if (command.Contains(" 1>> ")) { redirectIndex = command.IndexOf(" 1>> "); operatorStr = " 1>> "; redirectType = 1; appendMode = true; }
             else if (command.Contains(" >> ")) { redirectIndex = command.IndexOf(" >> "); operatorStr = " >> "; redirectType = 1; appendMode = true; }
@@ -72,8 +64,6 @@ class Program
                 command = command.Substring(0, redirectIndex).Trim();
             }
 
-            // 3. THIRD PRIORITY: Shell Built-ins
-            // We check for 'exit' separately because it needs to 'break' the loop
             if (command == "exit")
             {
                 if (!string.IsNullOrEmpty(histFile))
@@ -84,21 +74,18 @@ class Program
 
                 break;
             }
-            // Use the Master Function for all other built-ins
             string? builtinOutput = ExecuteBuiltin(command);
             if (builtinOutput != null)
             {
-                if (redirectType == 1) // Redirect Standard Output
+                if (redirectType == 1)
                 {
                     if (appendMode) File.AppendAllText(redirectPath, builtinOutput);
                     else File.WriteAllText(redirectPath, builtinOutput);
                 }
                 else
                 {
-                    // Print to screen if no redirection (or if it's 2> which doesn't apply to success)
                     Console.Write(builtinOutput);
 
-                    // Edge case: if user did 'echo hi 2> file', we print 'hi' but must create/touch the file
                     if (redirectType == 2)
                     {
                         if (appendMode) File.AppendAllText(redirectPath, "");
@@ -108,12 +95,10 @@ class Program
                 continue;
             }
 
-            // 4. LOWEST PRIORITY: External Programs
-            // If nothing else claimed the command, try to run it as a file in the PATH
             ExecuteExternal(command, redirectType, redirectPath, appendMode);
         }
     }
-    // --- HELPER METHODS ---
+
     public static bool FileExistsAndExecutable(string name, out string fullpath)
     {
         string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
@@ -155,20 +140,25 @@ class Program
     }
     private static string? ExecuteBuiltin(string command)
     {
-        if (command.StartsWith("echo "))
+        List<string> tokens = ParseInput(command);
+        if (tokens.Count == 0) return null;
+
+        string cmdName = tokens[0];
+
+        if (cmdName == "echo")
         {
-            string text = command.Substring(5).Trim().Trim('\'', '"');
+            string text = string.Join(" ", tokens.Skip(1));
             return text.Replace("\\n", "\n") + "\n";
         }
 
-        if (command == "pwd")
+        if (cmdName == "pwd")
         {
             return Directory.GetCurrentDirectory() + "\n";
         }
 
-        if (command.StartsWith("cd "))
+        if (cmdName == "cd")
         {
-            string dir = command.Substring(3).Trim();
+            string dir = tokens.Count > 1 ? tokens[1] : "~";
             try
             {
                 if (dir == "~") dir = Environment.GetEnvironmentVariable("HOME") ?? "";
@@ -181,17 +171,14 @@ class Program
             {
                 Console.WriteLine($"cd: {e.Message}");
             }
-            return ""; // Success, but no output string to pipe
+            return "";
         }
 
-        if (command.StartsWith("history"))
+        if (cmdName == "history")
         {
-            string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-            // --- Handle 'history -r <file>' (Read / Load) ---
-            if (parts.Length >= 3 && parts[1] == "-r")
+            if (tokens.Count >= 3 && tokens[1] == "-r")
             {
-                string filePath = parts[2];
+                string filePath = tokens[2];
                 if (File.Exists(filePath))
                 {
                     string[] lines = File.ReadAllLines(filePath);
@@ -200,42 +187,29 @@ class Program
                         if (!string.IsNullOrWhiteSpace(line)) commandHistory.Add(line);
                     }
                 }
-                // Move the bookmark so we don't accidentally append loaded commands later
                 lastSavedHistoryIndex = commandHistory.Count;
                 return "";
             }
 
-            // --- Handle 'history -w <file>' (Write All) ---
-            else if (parts.Length >= 3 && parts[1] == "-w")
+            else if (tokens.Count >= 3 && tokens[1] == "-w")
             {
-                string filePath = parts[2];
+                string filePath = tokens[2];
                 File.WriteAllLines(filePath, commandHistory);
-
-                // Move the bookmark to the end because we just saved everything
                 lastSavedHistoryIndex = commandHistory.Count;
                 return "";
             }
 
-            // --- NEW: Handle 'history -a <file>' (Append New) ---
-            else if (parts.Length >= 3 && parts[1] == "-a")
+            else if (tokens.Count >= 3 && tokens[1] == "-a")
             {
-                string filePath = parts[2];
-
-                // 1. Grab only the commands that come AFTER our bookmark
+                string filePath = tokens[2];
                 var newCommands = commandHistory.Skip(lastSavedHistoryIndex).ToList();
-
-                // 2. Append only the new ones to the end of the file
                 File.AppendAllLines(filePath, newCommands);
-
-                // 3. Move the bookmark to the new end of the list
                 lastSavedHistoryIndex = commandHistory.Count;
-
-                return ""; // Silent success
+                return "";
             }
 
-            // --- Handle 'history <n>' or just 'history' (Display) ---
             int countToShow = commandHistory.Count;
-            if (parts.Length > 1 && int.TryParse(parts[1], out int n))
+            if (tokens.Count > 1 && int.TryParse(tokens[1], out int n))
             {
                 countToShow = n;
             }
@@ -250,36 +224,70 @@ class Program
             return sb.ToString();
         }
 
-        if (command.StartsWith("type "))
+        if (cmdName == "type")
         {
-            // 1. Get the target (e.g., "cat" from "type cat")
-            string target = command.Substring(5).Trim();
+            if (tokens.Count < 2) return "";
+            string target = tokens[1];
 
-            // 2. Check Builtins
             string[] builtins = { "type", "exit", "echo", "pwd", "cd", "history" };
             if (builtins.Contains(target)) return $"{target} is a shell builtin\n";
 
-            // 3. Check PATH
-            // Make sure your FileExistsAndExecutable is actually checking /bin/cat!
             if (FileExistsAndExecutable(target, out string path))
             {
                 return $"{target} is {path}\n";
             }
 
-            // 4. Fallback
             return $"{target}: not found\n";
         }
 
-        return null; // Not a builtin
+        return null;
     }
 
+    private static List<string> ParseInput(string input)
+    {
+        List<string> args = new List<string>();
+        StringBuilder currentArg = new StringBuilder();
+        bool inSingleQuotes = false;
+        bool inArg = false; // Tracks if we are currently building a word
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            char c = input[i];
+
+            if (c == '\'')
+            {
+                inSingleQuotes = !inSingleQuotes;
+                inArg = true;
+            }
+            else if (c == ' ' && !inSingleQuotes)
+            {
+                if (inArg)
+                {
+                    args.Add(currentArg.ToString());
+                    currentArg.Clear();
+                    inArg = false;
+                }
+            }
+            else
+            {
+                currentArg.Append(c);
+                inArg = true;
+            }
+        }
+
+        if (inArg)
+        {
+            args.Add(currentArg.ToString());
+        }
+
+        return args;
+    }
     private static void ExecuteExternal(string command, int redirectType, string redirectPath, bool appendMode)
     {
         var (programName, arguments) = ParseCommand(command);
 
         if (FileExistsAndExecutable(programName))
         {
-            // Use your StartProcess helper to keep it clean!
             bool redirectOutput = (redirectType == 1);
             bool redirectError = (redirectType == 2);
 
@@ -312,131 +320,6 @@ class Program
         }
     }
 
-    #region Old Code Before Refactoring
-
-    // private static void RunExternalPipeline(string leftCommand, string rightCommand)
-    // {
-    //     // 1. Parse Left Command
-    //     string[] leftParts = leftCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    //     string leftProgram = leftParts[0];
-    //     string leftArgs = leftParts.Length > 1 ? string.Join(" ", leftParts[1..]) : "";
-
-    //     // 2. Parse Right Command
-    //     string[] rightParts = rightCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    //     string rightProgram = rightParts[0];
-    //     string rightArgs = rightParts.Length > 1 ? string.Join(" ", rightParts[1..]) : "";
-
-    //     if (!FileExistsAndExecutable(leftProgram) || !FileExistsAndExecutable(rightProgram))
-    //     {
-    //         Console.WriteLine("Command not found in pipeline");
-    //         return;
-    //     }
-
-    //     // 4. Set up Left Process (The Talker)
-    //     Process leftProcess = new Process();
-    //     leftProcess.StartInfo.FileName = leftProgram;
-    //     leftProcess.StartInfo.Arguments = leftArgs;
-    //     leftProcess.StartInfo.UseShellExecute = false;
-    //     leftProcess.StartInfo.RedirectStandardOutput = true; // We MUST redirect this to grab it
-
-    //     // 5. Set up Right Process (The Listener)
-    //     Process rightProcess = new Process();
-    //     rightProcess.StartInfo.FileName = rightProgram;
-    //     rightProcess.StartInfo.Arguments = rightArgs;
-    //     rightProcess.StartInfo.UseShellExecute = false;
-    //     rightProcess.StartInfo.RedirectStandardInput = true;  // We MUST redirect this to feed it
-
-    //     // UPGRADE 1: Let the Right program talk directly to the screen! (No ReadToEnd needed)
-    //     rightProcess.StartInfo.RedirectStandardOutput = false;
-
-    //     // 6. Start them both simultaneously
-    //     leftProcess.Start();
-    //     rightProcess.Start();
-
-    //     // 7. The Active Bucket Brigade
-    //     Task.Run(() =>
-    //     {
-    //         try
-    //         {
-    //             byte[] buffer = new byte[4096];
-    //             int bytesRead;
-
-    //             // UPGRADE 2: Read chunks as they arrive, even if the bucket isn't full
-    //             while ((bytesRead = leftProcess.StandardOutput.BaseStream.Read(buffer, 0, buffer.Length)) > 0)
-    //             {
-    //                 rightProcess.StandardInput.BaseStream.Write(buffer, 0, bytesRead);
-
-    //                 // CRITICAL: Shove the data down the pipe immediately so 'head' gets it!
-    //                 rightProcess.StandardInput.BaseStream.Flush();
-    //             }
-    //         }
-    //         catch
-    //         {
-    //             // Catches the Broken Pipe if the Right process exits early
-    //         }
-    //         finally
-    //         {
-    //             rightProcess.StandardInput.Close(); // Slam the door shut
-    //         }
-    //     });
-
-    //     // 8. Wait for the Right process to officially finish 
-    //     // (It will exit natively once it hits its 5-line limit)
-    //     rightProcess.WaitForExit();
-
-    //     // 9. The Assassination
-    //     if (!leftProcess.HasExited)
-    //     {
-    //         try { leftProcess.Kill(); } catch { } // Safely kill the infinite tail
-    //     }
-    // }
-
-    // private static void ExecutePipeline(string leftCommand, string rightCommand)
-    // {
-    //     // Try to run the left and right as built-ins first
-    //     string? leftBuiltinOutput = ExecuteBuiltin(leftCommand);
-    //     bool rightIsBuiltin = IsBuiltin(rightCommand);
-
-    //     // --- CASE 1: Built-in | External (e.g., echo "hi" | wc) ---
-    //     if (leftBuiltinOutput != null && !rightIsBuiltin)
-    //     {
-    //         var (prog, args) = ParseCommand(rightCommand);
-    //         Process rightProc = StartProcess(prog, args, redirectIn: true, redirectOut: false);
-
-    //         // Directly shove the string from C# into the program's mouth
-    //         rightProc.StandardInput.Write(leftBuiltinOutput);
-    //         rightProc.StandardInput.Close();
-    //         rightProc.WaitForExit();
-    //     }
-    //     // --- CASE 2: External | Built-in (e.g., ls | type exit) ---
-    //     else if (leftBuiltinOutput == null && rightIsBuiltin)
-    //     {
-    //         var (prog, args) = ParseCommand(leftCommand);
-    //         Process leftProc = StartProcess(prog, args, redirectIn: false, redirectOut: true);
-
-    //         // We execute the built-in logic and ignore the left process's output
-    //         // (Most built-ins like 'type' or 'cd' don't read from stdin)
-    //         string? result = ExecuteBuiltin(rightCommand);
-    //         Console.Write(result);
-
-    //         leftProc.Kill(); // We don't need the left side anymore
-    //     }
-    //     // --- CASE 3: External | External (The "Bucket Brigade") ---
-    //     else if (leftBuiltinOutput == null && !rightIsBuiltin)
-    //     {
-    //         // This is your existing code logic for two external processes
-    //         RunExternalPipeline(leftCommand, rightCommand);
-    //     }
-    //     // --- CASE 4: Built-in | Built-in (e.g., echo "hi" | type pwd) ---
-    //     else
-    //     {
-    //         string? result = ExecuteBuiltin(rightCommand);
-    //         Console.Write(result);
-    //     }
-    // }
-
-    #endregion
-
     private static void ExecuteMultiStagePipeline(string[] stages)
     {
         List<Process> processes = new List<Process>();
@@ -446,27 +329,29 @@ class Program
         {
             string currentStage = stages[i];
 
-            // Check if this specific stage is a built-in
             string? builtinResult = ExecuteBuiltin(currentStage);
 
             if (builtinResult != null)
             {
-                // If it's the LAST stage (e.g., ls | type exit), we must print it!
                 if (i == stages.Length - 1)
                 {
                     Console.Write(builtinResult);
                 }
                 else
                 {
-                    // If it's a middle stage, pass its string to the next one
                     previousOutput = new MemoryStream(Encoding.UTF8.GetBytes(builtinResult));
                 }
             }
             else
             {
-                var (prog, args) = ParseCommand(currentStage);
+                List<string> tokens = ParseInput(currentStage);
 
-                // 1. Determine the "Hoses" (Redirection)
+                if (tokens.Count == 0) continue;
+
+                string prog = tokens[0];
+
+                List<string> args = tokens.Skip(1).ToList();
+
                 bool redirectIn = (previousOutput != null || i > 0);
                 bool redirectOut = (i < stages.Length - 1);
 
@@ -474,13 +359,11 @@ class Program
 
                 processes.Add(proc);
 
-                // Stream data from previous stage into this one
                 if (previousOutput != null)
                 {
                     LinkStages(previousOutput, proc.StandardInput.BaseStream);
                 }
 
-                // Prepare the hose for the next iteration
                 if (i < stages.Length - 1)
                 {
                     previousOutput = proc.StandardOutput.BaseStream;
@@ -488,13 +371,11 @@ class Program
             }
         }
 
-        // Wait for the final process to finish
         if (processes.Count > 0)
         {
             processes.Last().WaitForExit();
         }
 
-        // Cleanup infinite processes
         foreach (var p in processes)
         {
             if (!p.HasExited) try { p.Kill(); } catch { }
@@ -505,7 +386,6 @@ class Program
         StringBuilder sb = new StringBuilder();
         bool previousKeyWasTab = false;
 
-        // Start the pointer at the end of the history
         int historyPointer = commandHistory.Count;
 
         while (true)
@@ -531,7 +411,6 @@ class Program
                 string current = sb.ToString();
                 int lastSpaceIndex = current.LastIndexOf(' ');
 
-                // Delegate the heavy lifting to our new helper methods!
                 if (lastSpaceIndex >= 0)
                 {
                     HandleArgumentCompletion(current, lastSpaceIndex, sb, ref previousKeyWasTab);
@@ -545,19 +424,15 @@ class Program
             {
                 if (historyPointer > 0)
                 {
-                    // 1. Move back in time
                     historyPointer--;
                     string previousCommand = commandHistory[historyPointer];
 
-                    // 2. Clear current line on screen
-                    // We go back by the current sb.Length
                     while (sb.Length > 0)
                     {
                         Console.Write("\b \b");
                         sb.Length--;
                     }
 
-                    // 3. Load the historical command
                     sb.Append(previousCommand);
                     Console.Write(previousCommand);
                 }
@@ -569,21 +444,18 @@ class Program
                     historyPointer++;
                     string nextCommand = commandHistory[historyPointer];
 
-                    // Clear and Replace (Same logic as Up Arrow)
                     while (sb.Length > 0) { Console.Write("\b \b"); sb.Length--; }
                     sb.Append(nextCommand);
                     Console.Write(nextCommand);
                 }
                 else if (historyPointer == commandHistory.Count - 1)
                 {
-                    // If we go past the last item, show an empty line
                     historyPointer = commandHistory.Count;
                     while (sb.Length > 0) { Console.Write("\b \b"); sb.Length--; }
                 }
             }
             else
             {
-                // Normal typing
                 sb.Append(keyInfo.KeyChar);
                 Console.Write(keyInfo.KeyChar);
                 previousKeyWasTab = false;
@@ -747,12 +619,10 @@ class Program
     {
         if (strs == null || strs.Count == 0) return "";
 
-        // Start by assuming the first word is the prefix
         string prefix = strs[0];
 
         for (int i = 1; i < strs.Count; i++)
         {
-            // If the next word doesn't start with our prefix, chop a letter off the end and try again
             while (!strs[i].StartsWith(prefix))
             {
                 prefix = prefix.Substring(0, prefix.Length - 1);
@@ -775,14 +645,19 @@ class Program
         return (parts[0], parts.Length > 1 ? string.Join(" ", parts[1..]) : "");
     }
 
-    private static Process StartProcess(string prog, string args, bool redirectIn, bool redirectOut)
+    private static Process StartProcess(string prog, List<string> args, bool redirectIn, bool redirectOut)
     {
         Process p = new Process();
         p.StartInfo.FileName = prog;
-        p.StartInfo.Arguments = args;
         p.StartInfo.UseShellExecute = false;
         p.StartInfo.RedirectStandardInput = redirectIn;
         p.StartInfo.RedirectStandardOutput = redirectOut;
+
+        foreach (string arg in args)
+        {
+            p.StartInfo.ArgumentList.Add(arg);
+        }
+
         p.Start();
         return p;
     }
@@ -793,18 +668,16 @@ class Program
         {
             try
             {
-                // The actual "pouring" of the data bucket
                 source.CopyTo(destination);
                 destination.Flush();
             }
             catch (Exception)
             {
-                // Broken pipes are normal when the receiver (like 'head') quits early
+                // Broken pipe is normal if a downstream process exits early.
             }
             finally
             {
-                // CRITICAL: Always close the destination so the next program 
-                // knows no more data is coming.
+                // Always close destination so the next stage sees EOF.
                 destination.Close();
             }
         });
