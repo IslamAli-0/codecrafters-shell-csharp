@@ -256,39 +256,67 @@ class Program
         {
             char c = input[i];
 
-            // Backslash Escaping (Outside Quotes) 
-            if (c == '\\' && !inSingleQuotes && !inDoubleQuotes)
+            if (c == '\\')
             {
-                // Make sure there is actually a character after the backslash
-                if (i + 1 < input.Length)
+                if (!inSingleQuotes && !inDoubleQuotes)
                 {
-                    // Grab the next character exactly as it is 
-                    currentArg.Append(input[i + 1]);
-                    inArg = true;
-
-                    // Skip over that next character so the loop doesn't process it again!
-                    i++;
+                    // Outside Quotes: Always escape the next character
+                    if (i + 1 < input.Length)
+                    {
+                        currentArg.Append(input[i + 1]);
+                        inArg = true;
+                        i++; // Skip the character we just appended
+                    }
+                    else
+                    {
+                        currentArg.Append(c);
+                        inArg = true;
+                    }
+                }
+                else if (inDoubleQuotes)
+                {
+                    // Inside Double Quotes: Only escape specific characters
+                    if (i + 1 < input.Length)
+                    {
+                        char next = input[i + 1];
+                        // Bash rules: \ only escapes ", \, $, `, and newline inside double quotes
+                        if (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n')
+                        {
+                            currentArg.Append(next);
+                            inArg = true;
+                            i++; // Skip the escaped character
+                        }
+                        else
+                        {
+                            // If it's not a special character the \ is just a literal \
+                            currentArg.Append(c);
+                            inArg = true;
+                        }
+                    }
+                    else
+                    {
+                        currentArg.Append(c);
+                        inArg = true;
+                    }
                 }
                 else
                 {
-                    // Edge case: trailing backslash at the very end of the line
+                    // Inside Single Quotes: \ is just a literal \
                     currentArg.Append(c);
                     inArg = true;
                 }
             }
-            // Toggle single quotes (ONLY if we aren't currently inside double quotes)
+            // Toggle Quotes and Handle Spaces 
             else if (c == '\'' && !inDoubleQuotes)
             {
                 inSingleQuotes = !inSingleQuotes;
                 inArg = true;
             }
-            // Toggle double quotes (ONLY if we aren't currently inside single quotes)
             else if (c == '"' && !inSingleQuotes)
             {
                 inDoubleQuotes = !inDoubleQuotes;
                 inArg = true;
             }
-            // End of word (space) ONLY if we are outside both types of quotes
             else if (c == ' ' && !inSingleQuotes && !inDoubleQuotes)
             {
                 if (inArg)
@@ -300,11 +328,13 @@ class Program
             }
             else
             {
+                // Normal characters
                 currentArg.Append(c);
                 inArg = true;
             }
         }
 
+        // Add the very last argument if we hit the end of the line
         if (inArg)
         {
             args.Add(currentArg.ToString());
