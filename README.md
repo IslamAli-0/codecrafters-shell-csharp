@@ -1,34 +1,59 @@
-[![progress-banner](https://backend.codecrafters.io/progress/shell/c021ab99-2da9-4cb6-9c65-6570f549299a)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# ISLAM-Shell (Custom C# Shell)
 
-This is a starting point for C# solutions to the
-["Build Your Own Shell" Challenge](https://app.codecrafters.io/courses/shell/overview).
+![C#](https://img.shields.io/badge/C%23-%23239120.svg?style=for-the-badge&logo=c-sharp&logoColor=white)
+![.NET](https://img.shields.io/badge/.NET-5C2D91?style=for-the-badge&logo=.net&logoColor=white)
 
-In this challenge, you'll build your own POSIX compliant shell that's capable of
-interpreting shell commands, running external programs and builtin commands like
-cd, pwd, echo and more. Along the way, you'll learn about shell command parsing,
-REPLs, builtin commands, and more.
+A fully-functional, lightweight Unix-style shell built entirely in C# and .NET.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+This project was built as part of the [CodeCrafters "Build your own Shell" challenge](https://app.codecrafters.io/courses/shell/overview). It demonstrates low-level system interactions, process management, custom string parsing, and interactive console buffer manipulation.
 
-# Passing the first stage
+## Demo
 
-The entry point for your `shell` implementation is in `src/main.cs`. Study and
-uncomment the relevant code, then run the command below to execute the tests on
-our servers:
+<img width="1391" height="908" alt="image" src="https://github.com/user-attachments/assets/302af095-3bbd-422e-8da8-550f595867f0" />
 
-```sh
-codecrafters submit
+
+## Key Features
+
+This shell goes far beyond basic command execution. It features a custom-built execution engine capable of handling standard Bash behaviors:
+
+- **Advanced Parsing Engine:** A state-machine Tokenizer that flawlessly handles single quotes (`'`), double quotes (`"`), and backslash escaping (`\`) without relying on basic string splits.
+- **Multi-Stage Pipelines (`|`):** Connects multiple processes together (e.g., `ls | head -n 3 | findstr "txt"`) using asynchronous C# `MemoryStream` and `Task` pipelines to prevent deadlocks.
+- **I/O Redirection:** Full support for redirecting standard output and standard error (`>`, `>>`, `1>`, `2>`, `2>>`).
+- **Interactive REPL:** Built from the ground up using `Console.ReadKey(intercept: true)` to support real-time user input manipulation.
+- **Tab Auto-Completion:** Intelligent completion for built-in commands, `PATH` executables, and complex nested file/directory paths.
+- **History Persistence:** Tracks session history, allows Up/Down arrow scrolling, and persists data to a `HISTFILE` on disk via `-a`, `-w`, and `-r` flags.
+- **Built-in Commands:** Native implementations of `cd`, `pwd`, `echo`, `type`, `history`, and `exit`.
+
+## How to Run
+
+This is a standard .NET project, running it is simple. Ensure you have the .NET SDK installed.
+
+1. Clone the repository:
+
+```bash
+   git clone https://github.com/IslamAli-0/codecrafters-shell-csharp.git
+   cd codecrafters-shell-csharp
 ```
 
-Time to move on to the next stage!
+2. Run the shell using the .NET CLI:
 
-# Stage 2 & beyond
+```bash
+   dotnet run
+```
 
-Note: This section is for stages 2 and beyond.
+3. (Optional) Build a standalone executable:
 
-1. Ensure you have `dotnet (9.0)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.cs`.
-1. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+```bash
+   dotnet publish -c Release
+```
+
+You can then find the executable in the `bin/Release` folder and run it natively from your terminal.
+
+## Under the Hood (Architecture)
+
+- **Tokenizer (`ParseInput`):** Instead of using `string.Split()`, the shell evaluates user input character-by-character to respect quote boundaries and escape characters before passing arguments securely via `Process.StartInfo.ArgumentList`.
+- **Execution Engine:** Resolves commands by checking an internal array of built-ins first, then scans the system's `PATH` environment variable using `File.Exists` (and checks execution permissions) to launch external binaries via `System.Diagnostics.Process`.
+
+## Acknowledgments
+
+This project was built following the architecture and testing suite provided by [CodeCrafters](https://codecrafters.io).
