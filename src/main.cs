@@ -249,15 +249,35 @@ class Program
         StringBuilder currentArg = new StringBuilder();
 
         bool inSingleQuotes = false;
-        bool inDoubleQuotes = false; // Track double quotes
+        bool inDoubleQuotes = false;
         bool inArg = false;
 
         for (int i = 0; i < input.Length; i++)
         {
             char c = input[i];
 
+            // Backslash Escaping (Outside Quotes)
+            if (c == '\\' && !inSingleQuotes && !inDoubleQuotes)
+            {
+                // Make sure there is actually a character after the backslash
+                if (i + 1 < input.Length)
+                {
+                    // Grab the next character exactly as it is 
+                    currentArg.Append(input[i + 1]);
+                    inArg = true;
+
+                    // Skip over that next character so the loop doesn't process it again!
+                    i++;
+                }
+                else
+                {
+                    // Edge case: trailing backslash at the very end of the line
+                    currentArg.Append(c);
+                    inArg = true;
+                }
+            }
             // Toggle single quotes (ONLY if we aren't currently inside double quotes)
-            if (c == '\'' && !inDoubleQuotes)
+            else if (c == '\'' && !inDoubleQuotes)
             {
                 inSingleQuotes = !inSingleQuotes;
                 inArg = true;
