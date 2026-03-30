@@ -247,19 +247,29 @@ class Program
     {
         List<string> args = new List<string>();
         StringBuilder currentArg = new StringBuilder();
+
         bool inSingleQuotes = false;
-        bool inArg = false; // Tracks if we are currently building a word
+        bool inDoubleQuotes = false; // Track double quotes
+        bool inArg = false;
 
         for (int i = 0; i < input.Length; i++)
         {
             char c = input[i];
 
-            if (c == '\'')
+            // Toggle single quotes (ONLY if we aren't currently inside double quotes)
+            if (c == '\'' && !inDoubleQuotes)
             {
                 inSingleQuotes = !inSingleQuotes;
                 inArg = true;
             }
-            else if (c == ' ' && !inSingleQuotes)
+            // Toggle double quotes (ONLY if we aren't currently inside single quotes)
+            else if (c == '"' && !inSingleQuotes)
+            {
+                inDoubleQuotes = !inDoubleQuotes;
+                inArg = true;
+            }
+            // End of word (space) ONLY if we are outside both types of quotes
+            else if (c == ' ' && !inSingleQuotes && !inDoubleQuotes)
             {
                 if (inArg)
                 {
