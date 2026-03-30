@@ -148,7 +148,7 @@ class Program
         if (cmdName == "echo")
         {
             string text = string.Join(" ", tokens.Skip(1));
-            return text.Replace("\\n", "\n") + "\n";
+            return text + "\n";
         }
 
         if (cmdName == "pwd")
@@ -256,7 +256,7 @@ class Program
         {
             char c = input[i];
 
-            // Backslash Escaping (Outside Quotes)
+            // Backslash Escaping (Outside Quotes) 
             if (c == '\\' && !inSingleQuotes && !inDoubleQuotes)
             {
                 // Make sure there is actually a character after the backslash
