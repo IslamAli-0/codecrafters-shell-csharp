@@ -11,6 +11,26 @@ class Program
     private static int lastSavedHistoryIndex = 0;
     static void Main()
     {
+
+
+        // --- CUSTOM ASCII BANNER ---
+        Console.ForegroundColor = ConsoleColor.DarkBlue;
+        Console.WriteLine(@"
+  ___  _____  _      ___  ___  ___
+ |_ _|/  ___|| |    / _ \ |  \/  |
+  | | \ `--. | |   / /_\ \| .  . |
+  | |  `--. \| |   |  _  || |\/| |
+ _| |_/\__/ /| |___| | | || |  | |
+ \___/\____/ \_____|_| |_/\_|  |_/
+        ");
+        Console.ResetColor(); // Always reset so your text commands stay normal
+        Console.WriteLine(" Welcome to ISLAM-Shell, Type 'exit' to quit.\n");
+        // ---------------------------
+
+
+
+
+
         string? histFile = Environment.GetEnvironmentVariable("HISTFILE");
 
         if (!string.IsNullOrEmpty(histFile) && File.Exists(histFile))
